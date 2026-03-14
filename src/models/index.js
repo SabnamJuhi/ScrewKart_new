@@ -75,9 +75,11 @@ ProductReview.belongsTo(Product, {foreignKey: "productId"})
 Product.hasMany(ProductSpec, {foreignKey: "productId",as: "specs"})
 ProductSpec.belongsTo(Product, {foreignKey: "productId",as: "product"})
 
-//productPrice Relations
-Product.hasOne(ProductPrice, { foreignKey: 'productId',as: "price"});
-ProductPrice.belongsTo(Product, {foreignKey: "productId",as: "product"})
+// //productPrice Relations
+// Product.hasOne(ProductPrice, { foreignKey: 'productId',as: "price"});
+// ProductPrice.belongsTo(Product, {foreignKey: "productId",as: "product"})
+ProductVariant.hasOne(ProductPrice, {foreignKey: "variantId",as: "price"});
+ProductPrice.belongsTo(ProductVariant, {foreignKey: "variantId"});
 
         //ProductVariant Relations
 // This is the missing link!

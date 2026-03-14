@@ -224,214 +224,6 @@
 
 
 
-
-// const sequelize = require("../../config/db");
-
-// const Product = require("../../models/products/product.model");
-// const ProductPrice = require("../../models/products/price.model");
-// const ProductSpec = require("../../models/products/productSpec.model");
-// const ProductVariant = require("../../models/productVariants/productVariant.model");
-// const VariantImage = require("../../models/productVariants/variantImage.model");
-// const VariantSize = require("../../models/productVariants/variantSize.model");
-// const OfferApplicableProduct = require("../../models/offers/offerApplicableProduct.model");
-
-// const generateSKU = require("../../utils/skuGenerator");
-
-// /* ---------------- SAFE JSON PARSER ---------------- */
-// const parseJSON = (data, fieldName) => {
-//   try {
-//     return typeof data === "string" ? JSON.parse(data) : data;
-//   } catch {
-//     throw new Error(`Invalid JSON format in "${fieldName}"`);
-//   }
-// };
-
-// exports.createProduct = async (req, res) => {
-//   const t = await sequelize.transaction();
-
-//   try {
-//     const {
-//       title,
-//       brandName,
-//       categoryId,
-//       subCategoryId,
-//       productCategoryId,
-//       description,
-//       badge,
-//       specs,
-//       variants,
-//       appliedOffers,
-//       gstRate,
-//     } = req.body;
-
-//     if (!title || !categoryId || !subCategoryId || !productCategoryId) {
-//       throw new Error("Missing required product fields");
-//     }
-
-//     const parsedSpecs = parseJSON(specs, "specs");
-//     const parsedVariants = parseJSON(variants, "variants");
-//     const parsedAppliedOffers = appliedOffers
-//       ? parseJSON(appliedOffers, "appliedOffers")
-//       : [];
-
-//     if (!Array.isArray(parsedVariants) || parsedVariants.length === 0) {
-//       throw new Error("At least one variant is required");
-//     }
-
-//     /* ---------------- CREATE PRODUCT ---------------- */
-//     const product = await Product.create(
-//       {
-//         title,
-//         brandName,
-//         categoryId: Number(categoryId),
-//         subCategoryId: Number(subCategoryId),
-//         productCategoryId: Number(productCategoryId),
-//         description,
-//         badge,
-//         gstRate: Number(gstRate),
-//       },
-//       { transaction: t }
-//     );
-
-//     /* ---------------- SPECS ---------------- */
-//     const specRows = Object.keys(parsedSpecs || {}).map((key) => ({
-//       productId: product.id,
-//       specKey: key,
-//       specValue: parsedSpecs[key],
-//     }));
-
-//     if (specRows.length) {
-//       await ProductSpec.bulkCreate(specRows, { transaction: t });
-//     }
-
-//     /* ---------------- VARIANTS ---------------- */
-//     for (let i = 0; i < parsedVariants.length; i++) {
-//       const v = parsedVariants[i];
-
-//       /* ---- CREATE VARIANT ---- */
-//       const variant = await ProductVariant.create(
-//         {
-//           productId: product.id,
-//           variantCode: v.variantCode,
-//           packQuantity: v.packQuantity,
-//           finish: v.finish,
-//           grade: v.grade,
-//           material: v.material,
-//           threadType: v.threadType,
-//           totalStock: v.totalStock || 0,
-//           stockStatus: v.stockStatus || "In Stock",
-//         },
-//         { transaction: t }
-//       );
-
-//       /* -------- VARIANT PRICE -------- */
-//       if (!v.price?.mrp) {
-//         throw new Error(`Price missing for variant ${i}`);
-//       }
-
-//       const mrp = Number(v.price.mrp);
-
-//       let sellingPrice = v.price.sellingPrice
-//         ? Number(v.price.sellingPrice)
-//         : null;
-
-//       let discountPercentage = v.price.discountPercentage
-//         ? Number(v.price.discountPercentage)
-//         : null;
-
-//       if (discountPercentage !== null) {
-//         sellingPrice = mrp - (mrp * discountPercentage) / 100;
-//       }
-
-//       if (sellingPrice !== null && discountPercentage === null) {
-//         discountPercentage = ((mrp - sellingPrice) / mrp) * 100;
-//       }
-
-//       await ProductPrice.create(
-//         {
-//           variantId: variant.id,
-//           mrp,
-//           sellingPrice: Math.round(sellingPrice),
-//           discountPercentage: Math.round(discountPercentage),
-//           currency: v.price.currency || "INR",
-//         },
-//         { transaction: t }
-//       );
-
-//       /* -------- IMAGES -------- */
-//       if (Array.isArray(v.images) && v.images.length) {
-//         await VariantImage.bulkCreate(
-//           v.images.map((img) => ({
-//             variantId: variant.id,
-//             imageUrl: img,
-//           })),
-//           { transaction: t }
-//         );
-//       }
-
-//       /* -------- SIZES -------- */
-//       if (Array.isArray(v.sizes) && v.sizes.length) {
-//         await VariantSize.bulkCreate(
-//           v.sizes.map((s) => ({
-//             variantId: variant.id,
-//             length: s.length,
-//             diameter: s.diameter ?? null,
-//             approxWeightKg: s.approxWeightKg ?? null,
-//             stock: s.stock || 0,
-//           })),
-//           { transaction: t }
-//         );
-//       }
-//     }
-
-//     /* ---------------- OFFERS ---------------- */
-//     if (parsedAppliedOffers.length) {
-//       await OfferApplicableProduct.bulkCreate(
-//         parsedAppliedOffers.map((o) => ({
-//           productId: product.id,
-//           offerId: o.offerId,
-//           subOfferId: o.subOfferId,
-//         })),
-//         { transaction: t }
-//       );
-//     }
-
-//     /* ---------------- SKU GENERATION ---------------- */
-//     const fullProduct = await Product.findByPk(product.id, {
-//       include: ["Category", "SubCategory", "ProductCategory"],
-//       transaction: t,
-//     });
-
-//     const generatedSku = await generateSKU(fullProduct, t);
-
-//     await product.update({ sku: generatedSku }, { transaction: t });
-
-//     await t.commit();
-
-//     return res.status(201).json({
-//       success: true,
-//       message: "Product created successfully",
-//       productId: product.id,
-//       sku: generatedSku,
-//     });
-//   } catch (error) {
-//     if (t && !t.finished) await t.rollback();
-
-//     console.error("CREATE PRODUCT ERROR:", error);
-
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "Product creation failed",
-//     });
-//   }
-// };
-
-
-
-
-
-
-
 const sequelize = require("../../config/db");
 const { ValidationError } = require("sequelize");
 
@@ -442,6 +234,7 @@ const ProductVariant = require("../../models/productVariants/productVariant.mode
 const VariantImage = require("../../models/productVariants/variantImage.model");
 const VariantSize = require("../../models/productVariants/variantSize.model");
 const OfferApplicableProduct = require("../../models/offers/offerApplicableProduct.model");
+const priceService = require("../../services/price.service");
 
 const generateSKU = require("../../utils/skuGenerator");
 
@@ -652,18 +445,18 @@ exports.createProduct = async (req, res) => {
     // ==================== VALIDATE VARIANTS ====================
     validateArray(parsedVariants, "variants", { minLength: 1 });
 
-    // Check for duplicate variant codes
-    const variantCodes = parsedVariants
-      .map((v) => v.variantCode)
-      .filter(Boolean);
-    const duplicateCodes = variantCodes.filter(
-      (code, index) => variantCodes.indexOf(code) !== index,
-    );
-    if (duplicateCodes.length > 0) {
-      throw new Error(
-        `Duplicate variant codes found: ${duplicateCodes.join(", ")}`,
-      );
-    }
+    // // Check for duplicate variant codes
+    // const variantCodes = parsedVariants
+    //   .map((v) => v.variantCode)
+    //   .filter(Boolean);
+    // const duplicateCodes = variantCodes.filter(
+    //   (code, index) => variantCodes.indexOf(code) !== index,
+    // );
+    // if (duplicateCodes.length > 0) {
+    //   throw new Error(
+    //     `Duplicate variant codes found: ${duplicateCodes.join(", ")}`,
+    //   );
+    // }
 
     // ==================== VALIDATE SPECS ====================
     if (parsedSpecs && typeof parsedSpecs === "object") {
@@ -823,10 +616,6 @@ exports.createProduct = async (req, res) => {
           },
         );
 
-        // Color fields (from old code)
-        const colorName = v.color?.name || null;
-        const colorCode = v.color?.code || null;
-        const swatch = v.color?.swatch || null;
 
         let calculatedTotalStock = 0;
 
@@ -848,7 +637,7 @@ exports.createProduct = async (req, res) => {
           );
         }
 
-        // ==================== VALIDATE VARIANT PRICE ====================
+ // ==================== VALIDATE VARIANT PRICE USING PRICE SERVICE ====================
         if (!v.price) {
           throw new Error(`Price is required for variant ${variantIndex}`);
         }
@@ -857,6 +646,7 @@ exports.createProduct = async (req, res) => {
           throw new Error(`MRP is required for variant ${variantIndex}`);
         }
 
+        // Validate MRP
         const validatedMrp = validateNumber(
           v.price.mrp,
           `variants[${variantIndex}].price.mrp`,
@@ -866,34 +656,20 @@ exports.createProduct = async (req, res) => {
           },
         );
 
-        let validatedSellingPrice = null;
-        let validatedDiscountPercentage = null;
-
-        // Validate based on what's provided
-        if (
-          v.price.sellingPrice !== undefined &&
-          v.price.sellingPrice !== null
-        ) {
-          validatedSellingPrice = validateNumber(
+        // Validate sellingPrice if provided
+        if (v.price.sellingPrice !== undefined && v.price.sellingPrice !== null) {
+          validateNumber(
             v.price.sellingPrice,
             `variants[${variantIndex}].price.sellingPrice`,
             {
               min: 0.01,
             },
           );
-
-          if (validatedSellingPrice > validatedMrp) {
-            throw new Error(
-              `Selling price cannot be greater than MRP for variant ${variantIndex}`,
-            );
-          }
         }
 
-        if (
-          v.price.discountPercentage !== undefined &&
-          v.price.discountPercentage !== null
-        ) {
-          validatedDiscountPercentage = validateNumber(
+        // Validate discountPercentage if provided
+        if (v.price.discountPercentage !== undefined && v.price.discountPercentage !== null) {
+          validateNumber(
             v.price.discountPercentage,
             `variants[${variantIndex}].price.discountPercentage`,
             {
@@ -903,21 +679,14 @@ exports.createProduct = async (req, res) => {
           );
         }
 
-        // Calculate missing values
-        if (validatedDiscountPercentage !== null) {
-          validatedSellingPrice =
-            validatedMrp - (validatedMrp * validatedDiscountPercentage) / 100;
-          validatedSellingPrice = Math.round(validatedSellingPrice);
-        } else if (validatedSellingPrice !== null) {
-          validatedDiscountPercentage =
-            ((validatedMrp - validatedSellingPrice) / validatedMrp) * 100;
-          validatedDiscountPercentage = Math.round(validatedDiscountPercentage);
-        } else {
-          throw new Error(
-            `Either sellingPrice or discountPercentage must be provided for variant ${variantIndex}`,
-          );
-        }
+        // 🔥 USE PRICE SERVICE TO CALCULATE PRICES
+        const calculatedPrice = priceService.calculatePrice({
+          mrp: v.price.mrp,
+          sellingPrice: v.price.sellingPrice,
+          discountPercentage: v.price.discountPercentage,
+        });
 
+        // Validate currency
         const validatedCurrency =
           validateString(
             v.price.currency,
@@ -931,7 +700,7 @@ exports.createProduct = async (req, res) => {
             },
           ) || "INR";
 
-        /* ---- CREATE VARIANT (with color fields from old code) ---- */
+        /* ---- CREATE VARIANT ---- */
         const variant = await ProductVariant.create(
           {
             productId: product.id,
@@ -941,9 +710,6 @@ exports.createProduct = async (req, res) => {
             grade: validatedGrade,
             material: validatedMaterial,
             threadType: validatedThreadType,
-            colorName: colorName,
-            colorCode: colorCode,
-            swatch: swatch,
             totalStock: calculatedTotalStock,
             stockStatus:
               v.stockStatus ||
@@ -954,16 +720,18 @@ exports.createProduct = async (req, res) => {
 
         createdVariants.push(variant);
 
-        /* -------- VARIANT PRICE -------- */
-        await ProductPrice.create(
+        /* -------- USE PRICE SERVICE UPSERT TO CREATE PRICE -------- */
+        // 🔥 This ensures consistent price creation/update logic
+        await priceService.upsert(
+          product.id,
+          variant.id,
           {
-            variantId: variant.id,
-            mrp: validatedMrp,
-            sellingPrice: validatedSellingPrice,
-            discountPercentage: validatedDiscountPercentage,
+            mrp: calculatedPrice.mrp,
+            sellingPrice: calculatedPrice.sellingPrice,
+            discountPercentage: calculatedPrice.discountPercentage,
             currency: validatedCurrency,
           },
-          { transaction: t },
+          t
         );
 
         /* -------- IMAGES (OLD APPROACH - FROM UPLOADED FILES) -------- */
