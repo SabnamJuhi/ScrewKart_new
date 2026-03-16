@@ -148,6 +148,203 @@
 //   }
 // };
 
+
+
+// const sequelize = require("../../config/db");
+
+// const Product = require("../../models/products/product.model");
+// const ProductPrice = require("../../models/products/price.model");
+// const ProductSpec = require("../../models/products/productSpec.model");
+// const ProductVariant = require("../../models/productVariants/productVariant.model");
+// const VariantImage = require("../../models/productVariants/variantImage.model");
+// const VariantSize = require("../../models/productVariants/variantSize.model");
+
+// const Offer = require("../../models/offers/offer.model");
+// const OfferSub = require("../../models/offers/offerSub.model");
+// const OfferApplicableProduct = require("../../models/offers/offerApplicableProduct.model");
+
+// const Wishlist = require("../../models/wishlist.model");
+
+// const { Category, SubCategory, ProductCategory } = require("../../models");
+// const {
+//   getPaginationOptions,
+//   formatPagination,
+// } = require("../../utils/paginate");
+
+// exports.getAllProductsDetails = async (req, res) => {
+//   try {
+//     const userId = req.user?.id;
+//     const paginationOptions = getPaginationOptions(req.query);
+//     /* ---------------- DYNAMIC WHERE ---------------- */
+//     const productWhere = {};
+
+//     if (req.query.isActive !== undefined) {
+//       productWhere.isActive = req.query.isActive === "true";
+//     }
+
+//     /* ---------------- GET PRODUCTS ---------------- */
+//     const products = await Product.findAndCountAll({
+//       where: productWhere,
+//       attributes: [
+//         "id",
+//         "sku",
+//         "title",
+//         "description",
+//         "brandName",
+//         "badge",
+//         "gstRate",
+//         "isActive",
+//         "createdAt",
+//       ],
+
+//       include: [
+//         { model: Category, as: "Category", attributes: ["id", "name"] },
+//         { model: SubCategory, as: "SubCategory", attributes: ["id", "name"] },
+//         {
+//           model: ProductCategory,
+//           as: "ProductCategory",
+//           attributes: ["id", "name"],
+//         },
+
+//         { model: ProductPrice, as: "price" },
+//         { model: ProductSpec, as: "specs" },
+
+//         {
+//           model: ProductVariant,
+//           as: "variants",
+//           attributes: [
+//             "id",
+//             "variantCode",
+//             "colorName",
+//             "colorCode",
+//             "colorSwatch",
+//             "totalStock",
+//             "stockStatus",
+//             "isActive",
+//           ],
+//           include: [
+//             {
+//               model: VariantImage,
+//               as: "images",
+//               attributes: ["id", "imageUrl"],
+//             },
+//             {
+//               model: VariantSize,
+//               as: "sizes",
+//               attributes: ["id", "length", "diameter", "stock"],
+//             },
+//           ],
+//         },
+
+//         {
+//           model: OfferApplicableProduct,
+//           as: "offerApplicableProducts",
+//           attributes: ["id", "offerId", "subOfferId"],
+//           include: [
+//             {
+//               model: Offer,
+//               as: "offerDetails",
+//               attributes: [
+//                 "id",
+//                 "offerCode",
+//                 "title",
+//                 "festival",
+//                 "description",
+//                 "startDate",
+//                 "endDate",
+//                 "isActive",
+//               ],
+//               include: [
+//                 {
+//                   model: OfferSub,
+//                   as: "subOffers",
+//                   attributes: [
+//                     "id",
+//                     "discountType",
+//                     "discountValue",
+//                     "maxDiscount",
+//                   ],
+//                 },
+//               ],
+//             },
+//           ],
+//         },
+//       ],
+//       distinct: true,
+//       order: [["createdAt", "DESC"]],
+//       ...paginationOptions,
+//     });
+
+//     /* ---------------- WISHLIST MAP ---------------- */
+//     let wishlistedMap = {};
+
+//     if (userId) {
+//       const wishlist = await Wishlist.findAll({
+//         where: { userId },
+//         attributes: ["productId", "variantId"],
+//       });
+
+//       wishlist.forEach((w) => {
+//         if (!wishlistedMap[w.productId]) {
+//           wishlistedMap[w.productId] = [];
+//         }
+//         wishlistedMap[w.productId].push(w.variantId);
+//       });
+//     }
+
+//     /* ---------------- ADD FLAGS ---------------- */
+//     const finalProducts = products.rows.map((p) => {
+//       const productJSON = p.toJSON();
+//       if (productJSON.variants) {
+//         productJSON.variants = productJSON.variants.map((variant) => {
+//           if (variant.sizes) {
+//             variant.sizes = variant.sizes.map((size) => ({
+//               id: size.id,
+//               diameter: size.diameter,
+//               length: size.length,
+//               stock: size.stock,
+
+//               // 👇 what frontend needs
+//               display: `M${size.diameter} × ${size.length}`,
+//               value: `${size.diameter}-${size.length}`,
+//             }));
+//           }
+//           return variant;
+//         });
+//       }
+//       const productWishlisted = !!wishlistedMap[p.id];
+
+//       return {
+//          ...productJSON,
+//         isWishlisted: productWishlisted,
+//         wishlistedVariants: wishlistedMap[p.id] || [],
+//       };
+//     });
+
+//     /* ---------------- FINAL PAGINATED RESPONSE ---------------- */
+//     const response = formatPagination(
+//       { count: products.count, rows: finalProducts }, // ✅ correct
+//       paginationOptions.currentPage,
+//       paginationOptions.limit,
+//     );
+
+//     return res.json({
+//       success: true,
+//       ...response,
+//     });
+//   } catch (error) {
+//     console.error("GET ALL PRODUCTS ERROR:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
+
+
+
+
 const sequelize = require("../../config/db");
 
 const Product = require("../../models/products/product.model");
@@ -173,6 +370,7 @@ exports.getAllProductsDetails = async (req, res) => {
   try {
     const userId = req.user?.id;
     const paginationOptions = getPaginationOptions(req.query);
+    
     /* ---------------- DYNAMIC WHERE ---------------- */
     const productWhere = {};
 
@@ -193,19 +391,30 @@ exports.getAllProductsDetails = async (req, res) => {
         "gstRate",
         "isActive",
         "createdAt",
+        "updatedAt",
       ],
 
       include: [
-        { model: Category, as: "Category", attributes: ["id", "name"] },
-        { model: SubCategory, as: "SubCategory", attributes: ["id", "name"] },
+        { 
+          model: Category, 
+          as: "Category", 
+          attributes: ["id", "name"] 
+        },
+        { 
+          model: SubCategory, 
+          as: "SubCategory", 
+          attributes: ["id", "name"] 
+        },
         {
           model: ProductCategory,
           as: "ProductCategory",
           attributes: ["id", "name"],
         },
-
-        { model: ProductPrice, as: "price" },
-        { model: ProductSpec, as: "specs" },
+        { 
+          model: ProductSpec, 
+          as: "specs",
+          attributes: ["id", "specKey", "specValue"]
+        },
 
         {
           model: ProductVariant,
@@ -213,9 +422,11 @@ exports.getAllProductsDetails = async (req, res) => {
           attributes: [
             "id",
             "variantCode",
-            "colorName",
-            "colorCode",
-            "colorSwatch",
+            "packQuantity",
+            "finish",
+            "grade",
+            "material",
+            "threadType",
             "totalStock",
             "stockStatus",
             "isActive",
@@ -229,7 +440,12 @@ exports.getAllProductsDetails = async (req, res) => {
             {
               model: VariantSize,
               as: "sizes",
-              attributes: ["id", "length", "diameter", "stock"],
+              attributes: ["id", "length", "diameter", "approxWeightKg", "stock"],
+            },
+            {
+              model: ProductPrice,
+              as: "price",
+              attributes: ["id", "mrp", "sellingPrice", "discountPercentage", "currency"],
             },
           ],
         },
@@ -261,6 +477,7 @@ exports.getAllProductsDetails = async (req, res) => {
                     "discountType",
                     "discountValue",
                     "maxDiscount",
+                    "minOrderValue",
                   ],
                 },
               ],
@@ -293,6 +510,7 @@ exports.getAllProductsDetails = async (req, res) => {
     /* ---------------- ADD FLAGS ---------------- */
     const finalProducts = products.rows.map((p) => {
       const productJSON = p.toJSON();
+      
       if (productJSON.variants) {
         productJSON.variants = productJSON.variants.map((variant) => {
           if (variant.sizes) {
@@ -300,28 +518,40 @@ exports.getAllProductsDetails = async (req, res) => {
               id: size.id,
               diameter: size.diameter,
               length: size.length,
+              approxWeightKg: size.approxWeightKg,
               stock: size.stock,
-
-              // 👇 what frontend needs
-              display: `M${size.diameter} × ${size.length}`,
-              value: `${size.diameter}-${size.length}`,
+              display: size.diameter && size.length 
+                ? `M${size.diameter} × ${size.length}`
+                : size.diameter 
+                  ? `D${size.diameter}`
+                  : size.length 
+                    ? `L${size.length}`
+                    : 'Standard',
+              value: size.diameter && size.length 
+                ? `${size.diameter}-${size.length}`
+                : size.diameter 
+                  ? `${size.diameter}`
+                  : size.length 
+                    ? `${size.length}`
+                    : 'std',
             }));
           }
           return variant;
         });
       }
-      const productWishlisted = !!wishlistedMap[p.id];
+
+      const productWishlisted = !!wishlistedMap[productJSON.id];
 
       return {
-         ...productJSON,
+        ...productJSON,
         isWishlisted: productWishlisted,
-        wishlistedVariants: wishlistedMap[p.id] || [],
+        wishlistedVariants: wishlistedMap[productJSON.id] || [],
       };
     });
 
     /* ---------------- FINAL PAGINATED RESPONSE ---------------- */
     const response = formatPagination(
-      { count: products.count, rows: finalProducts }, // ✅ correct
+      { count: products.count, rows: finalProducts },
       paginationOptions.currentPage,
       paginationOptions.limit,
     );
