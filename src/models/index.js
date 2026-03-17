@@ -36,6 +36,7 @@ const Wishlist = require("./wishlist.model");
 const DeliveryBoy = require("./orders/deliveryBoy.model")
 //featuured Category
 const FeaturedCategory = require("./featuredCategories/featured_categories.model")
+const FAQ = require("./faq/faq.model");
 
 
 
@@ -167,6 +168,16 @@ Wishlist.belongsTo(ProductVariant, { foreignKey: "variantId" });
 Category.hasMany(FeaturedCategory, {foreignKey: "categoryId", as: "featuredEntries"});
 FeaturedCategory.belongsTo(Category, {foreignKey: "categoryId", as: "category"});
 
+// Debug log to verify all models are loaded
+console.log('✅ Models loaded:', Object.keys({
+  User, Category, SubCategory, ProductCategory, Product,
+  ProductRating, ProductReview, ProductSpec, ProductPrice,
+  ProductVariant, VariantImage, VariantSize, Offer, OfferSub,
+  OfferApplicableCategory, OfferApplicableProduct, CartItem,
+  Order, OrderItem, OrderAddress, UserAddress, Wishlist,
+  DeliveryBoy, FeaturedCategory, FAQ
+}).join(', '));
+
 module.exports = {
   sequelize,
   Category,
@@ -190,5 +201,6 @@ module.exports = {
   OrderItem, 
   OrderAddress,
   Wishlist,
-  FeaturedCategory
+  FeaturedCategory,
+  FAQ,
 }
