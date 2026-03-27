@@ -1,24 +1,84 @@
 const UserAddress  = require("../../models/orders/userAddress.model");
 
+// exports.addAddress = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const data = req.body;
+
+//     // If setting default → unset previous default
+//     if (data.isDefault) {
+//       await UserAddress.update(
+//         { isDefault: false },
+//         { where: { userId } }
+//       );
+//     }
+
+//     const address = await UserAddress.create({ ...data, userId });
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Address added successfully",
+//       data: address,
+//     });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
 exports.addAddress = async (req, res) => {
   try {
     const userId = req.user.id;
-    const data = req.body;
 
-    // If setting default → unset previous default
-    if (data.isDefault) {
+    const {
+      addressLine,
+      customerDetails,
+      type,
+      address,
+      isDefault,
+    } = req.body;
+
+    // ✅ unset previous default
+    if (isDefault) {
       await UserAddress.update(
         { isDefault: false },
         { where: { userId } }
       );
     }
 
-    const address = await UserAddress.create({ ...data, userId });
+    const newAddress = await UserAddress.create({
+      userId,
+
+      // 👤 Customer
+      fullName: customerDetails?.name,
+      phoneNumber: customerDetails?.phone,
+      addressType: customerDetails?.addresstype,
+      type,
+
+      // 🏠 Address
+      addressLine,
+      house: address?.house,
+      neighborhood: address?.neighborhood,
+      landmark: address?.landmark,
+      area: address?.area,
+      locality: address?.locality,
+      city: address?.city,
+      state: address?.state,
+      zipCode: address?.pincode,
+      country: address?.country,
+
+      // 📍 Location
+      latitude: address?.gemetryData?.lat,
+      longitude: address?.gemetryData?.lng,
+      formattedAddress: address?.formatedAddress,
+      selectedAddressLine: address?.selectedAddressLine,
+
+      isDefault: isDefault || false,
+    });
 
     res.status(201).json({
       success: true,
       message: "Address added successfully",
-      data: address,
+      data: newAddress,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -45,28 +105,89 @@ exports.getUserAddresses = async (req, res) => {
   }
 };
 
+// exports.updateAddress = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const userId = req.user.id;
+//     const data = req.body;
+
+//     const address = await UserAddress.findOne({ where: { id, userId } });
+//     if (!address) throw new Error("Address not found");
+
+//     if (data.isDefault) {
+//       await UserAddress.update(
+//         { isDefault: false },
+//         { where: { userId } }
+//       );
+//     }
+
+//     await address.update(data);
+
+//     res.json({
+//       success: true,
+//       message: "Address updated successfully",
+//       data: address,
+//     });
+//   } catch (err) {
+//     res.status(404).json({ success: false, message: err.message });
+//   }
+// };
+
 exports.updateAddress = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const data = req.body;
 
-    const address = await UserAddress.findOne({ where: { id, userId } });
-    if (!address) throw new Error("Address not found");
+    const {
+      addressLine,
+      customerDetails,
+      type,
+      address,
+      isDefault,
+    } = req.body;
 
-    if (data.isDefault) {
+    const existing = await UserAddress.findOne({ where: { id, userId } });
+    if (!existing) throw new Error("Address not found");
+
+    // ✅ handle default
+    if (isDefault) {
       await UserAddress.update(
         { isDefault: false },
         { where: { userId } }
       );
     }
 
-    await address.update(data);
+    await existing.update({
+      fullName: customerDetails?.name ?? existing.fullName,
+      phoneNumber: customerDetails?.phone ?? existing.phoneNumber,
+      addressType: customerDetails?.addresstype ?? existing.addressType,
+      type: type ?? existing.type,
+
+      addressLine: addressLine ?? existing.addressLine,
+      house: address?.house ?? existing.house,
+      neighborhood: address?.neighborhood ?? existing.neighborhood,
+      landmark: address?.landmark ?? existing.landmark,
+      area: address?.area ?? existing.area,
+      locality: address?.locality ?? existing.locality,
+      city: address?.city ?? existing.city,
+      state: address?.state ?? existing.state,
+      zipCode: address?.pincode ?? existing.zipCode,
+      country: address?.country ?? existing.country,
+
+      latitude: address?.gemetryData?.lat ?? existing.latitude,
+      longitude: address?.gemetryData?.lng ?? existing.longitude,
+      formattedAddress:
+        address?.formatedAddress ?? existing.formattedAddress,
+      selectedAddressLine:
+        address?.selectedAddressLine ?? existing.selectedAddressLine,
+
+      isDefault: isDefault ?? existing.isDefault,
+    });
 
     res.json({
       success: true,
       message: "Address updated successfully",
-      data: address,
+      data: existing,
     });
   } catch (err) {
     res.status(404).json({ success: false, message: err.message });
