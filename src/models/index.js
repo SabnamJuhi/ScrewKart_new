@@ -37,10 +37,38 @@ const DeliveryBoy = require("./orders/deliveryBoy.model")
 //featuured Category
 const FeaturedCategory = require("./featuredCategories/featured_categories.model")
 const FAQ = require("./faq/faq.model");
+//Store
+const Store = require("./store/store.model");
 
 
 
+Store.hasMany(Product, {
+  foreignKey: "storeId",
+  as: "products",
+});
 
+Product.belongsTo(Store, {
+  foreignKey: "storeId",
+  as: "store",
+});
+Store.hasMany(Order, {
+  foreignKey: "storeId",
+  as: "orders",
+});
+
+Order.belongsTo(Store, {
+  foreignKey: "storeId",
+  as: "store",
+});
+Store.hasMany(VariantSize, {
+  foreignKey: "storeId",
+  as: "inventory",
+});
+
+VariantSize.belongsTo(Store, {
+  foreignKey: "storeId",
+  as: "store",
+});
 
 // SubCategory Relations
 Category.hasMany(SubCategory, {foreignKey: "categoryId",as: "subcategories"})
@@ -203,4 +231,5 @@ module.exports = {
   Wishlist,
   FeaturedCategory,
   FAQ,
+  Store
 }

@@ -33,6 +33,11 @@ Product.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    // models/product.model.js
+    storeId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
     description: {
       type: DataTypes.TEXT,
     },
@@ -44,7 +49,7 @@ Product.init(
       type: DataTypes.STRING,
     },
     gstRate: {
-      type: DataTypes.DECIMAL(5, 2), 
+      type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
       defaultValue: 0,
     },
@@ -52,7 +57,7 @@ Product.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
-     wishlistCount: {
+    wishlistCount: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
     },
