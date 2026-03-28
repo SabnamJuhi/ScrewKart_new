@@ -1,6 +1,7 @@
 // controllers/store.controller.js
 
 const { Store } = require("../../models");
+const { isStoreOpen } = require("../../utils/storeStatus");
 
 // const { getDistanceKm } = require("../../utils/distance");
 

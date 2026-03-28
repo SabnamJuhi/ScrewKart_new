@@ -99,7 +99,7 @@ exports.getNearestStore = async (req, res) => {
     if (!availableStores.length) {
       return res.json({
         success: false,
-        message: "No stores available in your area",
+        message: "We are expanding to your location",
       });
     }
 
