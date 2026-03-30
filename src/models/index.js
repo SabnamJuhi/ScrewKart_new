@@ -39,35 +39,63 @@ const FeaturedCategory = require("./featuredCategories/featured_categories.model
 const FAQ = require("./faq/faq.model");
 //Store
 const Store = require("./store/store.model");
+const StoreInventory = require("./products/StoreInventory.model");
 
 
 
-Store.hasMany(Product, {
+// Store.hasMany(Product, {
+//   foreignKey: "storeId",
+//   as: "products",
+// });
+
+// Product.belongsTo(Store, {
+//   foreignKey: "storeId",
+//   as: "store",
+// });
+// Store.hasMany(Order, {
+//   foreignKey: "storeId",
+//   as: "orders",
+// });
+
+// Order.belongsTo(Store, {
+//   foreignKey: "storeId",
+//   as: "store",
+// });
+Store.hasMany(StoreInventory, {
   foreignKey: "storeId",
-  as: "products",
+  as: "inventories",
 });
 
-Product.belongsTo(Store, {
+StoreInventory.belongsTo(Store, {
   foreignKey: "storeId",
   as: "store",
 });
-Store.hasMany(Order, {
-  foreignKey: "storeId",
-  as: "orders",
+Product.hasMany(StoreInventory, {
+  foreignKey: "productId",
+  as: "storeInventory",
 });
 
-Order.belongsTo(Store, {
-  foreignKey: "storeId",
-  as: "store",
+StoreInventory.belongsTo(Product, {
+  foreignKey: "productId",
+  as: "product",
 });
-Store.hasMany(VariantSize, {
-  foreignKey: "storeId",
-  as: "inventory",
+ProductVariant.hasMany(StoreInventory, {
+  foreignKey: "variantId",
+  as: "storeInventory",
 });
 
-VariantSize.belongsTo(Store, {
-  foreignKey: "storeId",
-  as: "store",
+StoreInventory.belongsTo(ProductVariant, {
+  foreignKey: "variantId",
+  as: "variant",
+});
+VariantSize.hasMany(StoreInventory, {
+  foreignKey: "variantSizeId",
+  as: "storeInventory",
+});
+
+StoreInventory.belongsTo(VariantSize, {
+  foreignKey: "variantSizeId",
+  as: "size",
 });
 
 // SubCategory Relations
@@ -231,5 +259,6 @@ module.exports = {
   Wishlist,
   FeaturedCategory,
   FAQ,
-  Store
+  Store,
+  StoreInventory
 }

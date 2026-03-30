@@ -33,11 +33,11 @@ Product.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    // models/product.model.js
-    storeId: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
+    // // models/product.model.js
+    // storeId: {
+    //   type: DataTypes.INTEGER,
+    //   allowNull: false,
+    // },
     description: {
       type: DataTypes.TEXT,
     },

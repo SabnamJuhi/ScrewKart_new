@@ -27,10 +27,10 @@ VariantSize.init(
       allowNull: true
     },
 
-    stock: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0
-    }
+    // stock: {
+    //   type: DataTypes.INTEGER,
+    //   defaultValue: 0
+    // }
   },
   {
     sequelize,
