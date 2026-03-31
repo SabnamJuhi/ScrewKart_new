@@ -15,7 +15,7 @@ const { getNearestStore } = require("../../controllers/store/getNearestStore.con
 // const { getNearbyStores } = require("../../controllers/store/getNearbyStores.controller");
 const { getProductsByStore } = require("../../controllers/store/getProductsByStore.controller");
 const adminAuthMiddleware = require("../../middleware/admin.auth.middleware");
-const {createStoreInventory} = require("../../controllers/store/createStoreInventory.controller")
+const {createStoreInventory, updateStock} = require("../../controllers/store/storeInventory.controller")
 
 
 
@@ -34,5 +34,6 @@ router.patch("/:id/toggle", adminAuthMiddleware, toggleStoreStatus);
 router.get("/nearest/list", getNearestStore);
 router.get("/:storeId/products", getProductsByStore);
 router.post("/storeInventory", adminAuthMiddleware, createStoreInventory)
+router.patch("/storeInventory", adminAuthMiddleware, updateStock)
 
 module.exports = router;

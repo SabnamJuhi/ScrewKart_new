@@ -58,10 +58,6 @@ const { isStoreOpen } = require("../../utils/storeStatus");
 //   }
 // };
 
-
-
-
-
 exports.getNearestStore = async (req, res) => {
   try {
     let { latitude, longitude } = req.query;
@@ -80,19 +76,17 @@ exports.getNearestStore = async (req, res) => {
     let availableStores = [];
 
     for (let store of stores) {
-      const distance = getDistanceKm(
-        lat,
-        lng,
-        store.latitude,
-        store.longitude
-      );
+      const distance = getDistanceKm(lat, lng, store.latitude, store.longitude);
 
       if (distance > store.deliveryRadius) continue;
+
+      const status = isStoreOpen(store);
 
       availableStores.push({
         ...store.toJSON(),
         distance,
-        isOpen: isStoreOpen(store),
+        isOpen: status.isOpen,
+        statusMessage: status.message,
       });
     }
 

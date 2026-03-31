@@ -90,16 +90,21 @@ exports.getStoreById = async (req, res) => {
   }
 };
 
-/* ---------------- UPDATE STORE ---------------- */
 exports.updateStore = async (req, res) => {
   try {
     const { id } = req.params;
 
     const store = await Store.findByPk(id);
 
-    if (!store) throw new Error("Store not found");
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Store not found",
+      });
+    }
 
-    const {
+    // ✅ Destructure INCLUDING isOpenManual
+    let {
       name,
       latitude,
       longitude,
@@ -109,8 +114,17 @@ exports.updateStore = async (req, res) => {
       lastOrderTime,
       avgDeliveryTime,
       isActive,
+      isOpenManual,
     } = req.body;
 
+    // ✅ Normalize boolean (VERY IMPORTANT)
+    if (isOpenManual !== undefined) {
+      if (isOpenManual === "true") isOpenManual = true;
+      else if (isOpenManual === "false") isOpenManual = false;
+      else if (isOpenManual === null) isOpenManual = null;
+    }
+
+    // ✅ Update store
     await store.update({
       name: name ?? store.name,
       latitude: latitude ?? store.latitude,
@@ -121,14 +135,23 @@ exports.updateStore = async (req, res) => {
       lastOrderTime: lastOrderTime ?? store.lastOrderTime,
       avgDeliveryTime: avgDeliveryTime ?? store.avgDeliveryTime,
       isActive: isActive ?? store.isActive,
+      isOpenManual:
+        isOpenManual !== undefined ? isOpenManual : store.isOpenManual,
     });
+
+    // ✅ Get store status (clean structure)
+    const status = isStoreOpen(store);
 
     res.json({
       success: true,
       message: "Store updated successfully",
       data: {
         ...store.toJSON(),
-        isOpen: isStoreOpen(store),
+
+        isOpen: status.isOpen,
+        acceptsOrders: status.acceptsOrders,
+        statusMessage: status.message,
+        status: status.status,
       },
     });
   } catch (error) {
@@ -138,7 +161,6 @@ exports.updateStore = async (req, res) => {
     });
   }
 };
-
 /* ---------------- DELETE (SOFT DELETE) ---------------- */
 exports.deleteStore = async (req, res) => {
   try {
@@ -186,4 +208,3 @@ exports.toggleStoreStatus = async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 };
-
