@@ -1143,6 +1143,8 @@
 
 
 
+
+
 const sequelize = require("../../config/db");
 const { ValidationError } = require("sequelize");
 
@@ -1153,6 +1155,7 @@ const ProductVariant = require("../../models/productVariants/productVariant.mode
 const VariantImage = require("../../models/productVariants/variantImage.model");
 const VariantSize = require("../../models/productVariants/variantSize.model");
 const OfferApplicableProduct = require("../../models/offers/offerApplicableProduct.model");
+const StoreInventory = require("../../models/products/StoreInventory.model");
 const fs = require("fs");
 const priceService = require("../../services/price.service");
 const path = require("path");
@@ -1283,13 +1286,76 @@ const validateArray = (value, fieldName, options = {}) => {
   return value;
 };
 
+/* ---------------- HELPER FUNCTION TO UPDATE VARIANT STOCK FROM INVENTORY ---------------- */
+const updateVariantStockFromInventory = async (variantId, transaction) => {
+  try {
+    // First, get all size IDs for this variant
+    const variantSizes = await VariantSize.findAll({
+      where: { variantId },
+      attributes: ['id'],
+      transaction,
+    });
+    
+    const sizeIds = variantSizes.map(size => size.id);
+    
+    let totalStock = 0;
+    
+    // If there are sizes, sum stock across all inventory records for these sizes
+    if (sizeIds.length > 0) {
+      totalStock = await StoreInventory.sum("stock", {
+        where: { 
+          variantSizeId: sizeIds 
+        },
+        transaction,
+      });
+    }
+    
+    // Update variant total stock and status
+    await ProductVariant.update(
+      {
+        totalStock: totalStock || 0,
+        stockStatus: totalStock > 0 ? "In Stock" : "Out of Stock",
+      },
+      {
+        where: { id: variantId },
+        transaction,
+      }
+    );
+    
+    console.log(`Updated variant ${variantId}: totalStock = ${totalStock || 0}, stockStatus = ${totalStock > 0 ? "In Stock" : "Out of Stock"}`);
+    console.log(`Size IDs found: ${sizeIds.join(', ')}`);
+    
+    return totalStock || 0;
+  } catch (error) {
+    console.error(`Error updating variant stock for variant ${variantId}:`, error);
+    throw error;
+  }
+};
+
+/* ---------------- HELPER FUNCTION TO CHECK IF SIZES MATCH ---------------- */
+const doSizesMatch = (size1, size2, ignoreWeight = false) => {
+  const diameterMatch = (size1.diameter === size2.diameter || 
+                         (size1.diameter === null && size2.diameter === null));
+  const lengthMatch = (size1.length === size2.length || 
+                       (size1.length === null && size2.length === null));
+  
+  if (ignoreWeight) {
+    return diameterMatch && lengthMatch;
+  }
+  
+  const weightMatch = (size1.approxWeightKg === size2.approxWeightKg || 
+                       (size1.approxWeightKg === null && size2.approxWeightKg === null));
+  
+  return diameterMatch && lengthMatch && weightMatch;
+};
+
 /* ---------------- MAIN FUNCTION ---------------- */
 exports.updateProductDetails = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
     const { id: productId } = req.params;
-    console.log("FILES RECEIVED FOR UPDATE:", req.files); // 🔥 debug
+    console.log("FILES RECEIVED FOR UPDATE:", req.files);
 
     const {
       title,
@@ -1389,9 +1455,6 @@ exports.updateProductDetails = async (req, res) => {
       await product.update(updateData, { transaction: t });
     }
 
-    /* ---------------- PRICE UPDATE (REMOVED - NOW HANDLED PER VARIANT) ---------------- */
-    // Price updates are now handled inside the variant loop using priceService
-
     /* ---------------- SPECS REPLACE ---------------- */
     if (specs !== undefined) {
       const parsedSpecs = parseJSON(specs, "specs");
@@ -1458,19 +1521,6 @@ exports.updateProductDetails = async (req, res) => {
 
       // Validate variants array
       validateArray(parsedVariants, "variants", { minLength: 1 });
-
-      // Check for duplicate variant codes
-      const variantCodes = parsedVariants
-        .map((v) => v.variantCode)
-        .filter(Boolean);
-      const duplicateCodes = variantCodes.filter(
-        (code, index) => variantCodes.indexOf(code) !== index,
-      );
-      if (duplicateCodes.length > 0) {
-        throw new Error(
-          `Duplicate variant codes found: ${duplicateCodes.join(", ")}`,
-        );
-      }
 
       const dbVariants = await ProductVariant.findAll({
         where: { productId },
@@ -1553,52 +1603,6 @@ exports.updateProductDetails = async (req, res) => {
             },
           );
 
-          // Validate color fields
-          if (v.color) {
-            validateString(
-              v.color.name,
-              `variants[${variantIndex}].color.name`,
-              {
-                maxLength: 50,
-                required: false,
-              },
-            );
-            validateString(
-              v.color.code,
-              `variants[${variantIndex}].color.code`,
-              {
-                maxLength: 20,
-                required: false,
-              },
-            );
-          }
-
-          // Calculate total stock from sizes
-          let calculatedTotalStock = 0;
-          if (Array.isArray(v.sizes) && v.sizes.length > 0) {
-            calculatedTotalStock = v.sizes.reduce((sum, s) => {
-              const stock = validateNumber(
-                s.stock,
-                `variants[${variantIndex}].sizes stock`,
-                { isInteger: true, min: 0, required: true },
-              );
-              return sum + (stock || 0);
-            }, 0);
-          }
-
-          // Validate stock status
-          const validStockStatuses = [
-            "In Stock",
-            "Out of Stock",
-            "Pre-Order",
-            "Discontinued",
-          ];
-          if (v.stockStatus && !validStockStatuses.includes(v.stockStatus)) {
-            throw new Error(
-              `variants[${variantIndex}].stockStatus must be one of: ${validStockStatuses.join(", ")}`,
-            );
-          }
-
           // ==================== VALIDATE VARIANT PRICE USING PRICE SERVICE ====================
           if (!v.price) {
             throw new Error(`Price is required for variant ${variantIndex}`);
@@ -1641,7 +1645,7 @@ exports.updateProductDetails = async (req, res) => {
             );
           }
 
-          // 🔥 USE PRICE SERVICE TO CALCULATE PRICES
+          // USE PRICE SERVICE TO CALCULATE PRICES
           const calculatedPrice = priceService.calculatePrice({
             mrp: v.price.mrp,
             sellingPrice: v.price.sellingPrice,
@@ -1677,13 +1681,6 @@ exports.updateProductDetails = async (req, res) => {
                 grade: validatedGrade,
                 material: validatedMaterial,
                 threadType: validatedThreadType,
-                colorName: v.color?.name,
-                colorCode: v.color?.code,
-                colorSwatch: v.color?.swatch ?? null,
-                totalStock: calculatedTotalStock,
-                stockStatus:
-                  v.stockStatus ||
-                  (calculatedTotalStock > 0 ? "In Stock" : "Out of Stock"),
                 isActive: v.isActive !== undefined ? v.isActive : true,
               },
               { transaction: t },
@@ -1702,7 +1699,7 @@ exports.updateProductDetails = async (req, res) => {
               t
             );
 
-            /* ---------- REPLACE SIZES (WITH WEIGHT) ---------- */
+            /* ---------- REPLACE SIZES WITH INVENTORY MIGRATION ---------- */
             if (Array.isArray(v.sizes)) {
               // Validate each size
               v.sizes.forEach((s, sizeIndex) => {
@@ -1735,32 +1732,128 @@ exports.updateProductDetails = async (req, res) => {
                     required: false,
                   },
                 );
-                validateNumber(
-                  s.stock,
-                  `variants[${variantIndex}].sizes[${sizeIndex}].stock`,
-                  {
-                    required: true,
-                    isInteger: true,
-                    min: 0,
-                  },
-                );
               });
 
-              await VariantSize.destroy({
+              // Get existing sizes for this variant
+              const existingSizes = await VariantSize.findAll({
                 where: { variantId: variant.id },
                 transaction: t,
               });
 
-              await VariantSize.bulkCreate(
-                v.sizes.map((s) => ({
-                  variantId: variant.id,
-                  diameter: s.diameter ? Number(s.diameter) : null,
-                  length: s.length ? Number(s.length) : null,
-                  approxWeightKg: s.approxWeightKg ? Number(s.approxWeightKg) : null,
-                  stock: Number(s.stock) || 0,
-                })),
-                { transaction: t },
-              );
+              console.log(`Existing sizes for variant ${variant.id}:`, existingSizes.map(s => ({ id: s.id, diameter: s.diameter, length: s.length, weight: s.approxWeightKg })));
+
+              // Track which existing sizes are reused
+              const usedExistingSizeIds = new Set();
+              const newSizesList = [];
+
+              // First pass: Try to match existing sizes with new sizes (exact match including weight)
+              for (let sizeIndex = 0; sizeIndex < v.sizes.length; sizeIndex++) {
+                const newSizeData = v.sizes[sizeIndex];
+                let matched = false;
+
+                // Try to find an existing size that matches exactly (including weight)
+                for (const existingSize of existingSizes) {
+                  if (!usedExistingSizeIds.has(existingSize.id) && doSizesMatch(existingSize, newSizeData, false)) {
+                    // Update the existing size if needed
+                    if (existingSize.diameter !== (newSizeData.diameter ? Number(newSizeData.diameter) : null) ||
+                        existingSize.length !== (newSizeData.length ? Number(newSizeData.length) : null) ||
+                        existingSize.approxWeightKg !== (newSizeData.approxWeightKg ? Number(newSizeData.approxWeightKg) : null)) {
+                      await existingSize.update({
+                        diameter: newSizeData.diameter ? Number(newSizeData.diameter) : null,
+                        length: newSizeData.length ? Number(newSizeData.length) : null,
+                        approxWeightKg: newSizeData.approxWeightKg ? Number(newSizeData.approxWeightKg) : null,
+                      }, { transaction: t });
+                      console.log(`Updated existing size ${existingSize.id} with new dimensions`);
+                    }
+                    
+                    newSizesList.push(existingSize);
+                    usedExistingSizeIds.add(existingSize.id);
+                    matched = true;
+                    break;
+                  }
+                }
+
+                // If no exact match found, create a new size
+                if (!matched) {
+                  const newSize = await VariantSize.create({
+                    variantId: variant.id,
+                    diameter: newSizeData.diameter ? Number(newSizeData.diameter) : null,
+                    length: newSizeData.length ? Number(newSizeData.length) : null,
+                    approxWeightKg: newSizeData.approxWeightKg ? Number(newSizeData.approxWeightKg) : null,
+                  }, { transaction: t });
+                  console.log(`Created new size ${newSize.id} for variant ${variant.id}`);
+                  newSizesList.push(newSize);
+                }
+              }
+
+              // Find sizes that need to be deleted
+              const sizesToDelete = existingSizes.filter(size => !usedExistingSizeIds.has(size.id));
+              
+              if (sizesToDelete.length > 0) {
+                console.log(`Sizes to delete for variant ${variant.id}:`, sizesToDelete.map(s => s.id));
+                
+                // Check inventory for sizes to delete
+                for (const sizeToDelete of sizesToDelete) {
+                  const inventoryCount = await StoreInventory.count({
+                    where: { variantSizeId: sizeToDelete.id },
+                    transaction: t,
+                  });
+                  
+                  if (inventoryCount > 0) {
+                    // First try to find a size with exact match (including weight)
+                    let migratedToSize = null;
+                    
+                    // Try exact match first
+                    for (const newSize of newSizesList) {
+                      if (doSizesMatch(sizeToDelete, newSize, false) && sizeToDelete.id !== newSize.id) {
+                        migratedToSize = newSize;
+                        break;
+                      }
+                    }
+                    
+                    // If no exact match, try matching by diameter and length only (ignore weight)
+                    if (!migratedToSize) {
+                      for (const newSize of newSizesList) {
+                        if (doSizesMatch(sizeToDelete, newSize, true) && sizeToDelete.id !== newSize.id) {
+                          migratedToSize = newSize;
+                          console.log(`Found partial match for size ${sizeToDelete.id} with new size ${newSize.id} (ignoring weight)`);
+                          break;
+                        }
+                      }
+                    }
+                    
+                    if (migratedToSize) {
+                      // Migrate inventory to the matching size
+                      console.log(`Migrating inventory from size ${sizeToDelete.id} to size ${migratedToSize.id}`);
+                      
+                      await StoreInventory.update(
+                        { variantSizeId: migratedToSize.id },
+                        {
+                          where: { variantSizeId: sizeToDelete.id },
+                          transaction: t,
+                        }
+                      );
+                      
+                      // Update variantId in inventory if needed (for safety)
+                      await StoreInventory.update(
+                        { variantId: variant.id },
+                        {
+                          where: { variantSizeId: migratedToSize.id },
+                          transaction: t,
+                        }
+                      );
+                    } else {
+                      throw new Error(
+                        `Cannot delete size with ID ${sizeToDelete.id} because it has ${inventoryCount} inventory items and no matching size found to migrate inventory to. Please remove inventory first or ensure a similar size exists.`
+                      );
+                    }
+                  }
+                  
+                  // Now safe to delete the size
+                  await sizeToDelete.destroy({ transaction: t });
+                  console.log(`Deleted size ${sizeToDelete.id}`);
+                }
+              }
             }
 
             /* ---------- REPLACE IMAGES ---------- */
@@ -1796,10 +1889,22 @@ exports.updateProductDetails = async (req, res) => {
                 { transaction: t },
               );
             }
+
+            // Debug: Log current inventory for this variant
+            const inventoryItems = await StoreInventory.findAll({
+              where: { variantId: variant.id },
+              transaction: t,
+            });
+            console.log(`Inventory for variant ${variant.id}:`, JSON.stringify(inventoryItems, null, 2));
+            
+            // Update variant stock from inventory
+            await updateVariantStockFromInventory(variant.id, t);
+            
           } else {
             /* ---------- CREATE NEW VARIANT ---------- */
             if (!v.tempKey) throw new Error("tempKey required for new variant");
 
+            // For new variants, totalStock starts at 0
             variant = await ProductVariant.create(
               {
                 productId,
@@ -1809,13 +1914,8 @@ exports.updateProductDetails = async (req, res) => {
                 grade: validatedGrade,
                 material: validatedMaterial,
                 threadType: validatedThreadType,
-                colorName: v.color?.name,
-                colorCode: v.color?.code,
-                colorSwatch: v.color?.swatch ?? null,
-                totalStock: calculatedTotalStock,
-                stockStatus:
-                  v.stockStatus ||
-                  (calculatedTotalStock > 0 ? "In Stock" : "Out of Stock"),
+                totalStock: 0,
+                stockStatus: "Out of Stock",
                 isActive: v.isActive !== undefined ? v.isActive : true,
               },
               { transaction: t },
@@ -1836,7 +1936,7 @@ exports.updateProductDetails = async (req, res) => {
               t
             );
 
-            /* ---------- CREATE SIZES (WITH WEIGHT) ---------- */
+            /* ---------- CREATE SIZES ---------- */
             if (Array.isArray(v.sizes) && v.sizes.length > 0) {
               // Validate each size
               v.sizes.forEach((s, sizeIndex) => {
@@ -1869,15 +1969,6 @@ exports.updateProductDetails = async (req, res) => {
                     required: false,
                   },
                 );
-                validateNumber(
-                  s.stock,
-                  `variants[${variantIndex}].sizes[${sizeIndex}].stock`,
-                  {
-                    required: true,
-                    isInteger: true,
-                    min: 0,
-                  },
-                );
               });
 
               await VariantSize.bulkCreate(
@@ -1886,7 +1977,6 @@ exports.updateProductDetails = async (req, res) => {
                   diameter: s.diameter ? Number(s.diameter) : null,
                   length: s.length ? Number(s.length) : null,
                   approxWeightKg: s.approxWeightKg ? Number(s.approxWeightKg) : null,
-                  stock: Number(s.stock) || 0,
                 })),
                 { transaction: t },
               );
@@ -1910,23 +2000,8 @@ exports.updateProductDetails = async (req, res) => {
                 { transaction: t },
               );
             }
-          }
 
-          // Verify total stock matches sizes
-          if (Array.isArray(v.sizes) && v.sizes.length > 0) {
-            const sizes = await VariantSize.findAll({
-              where: { variantId: variant.id },
-              transaction: t,
-            });
-            const totalSizeStock = sizes.reduce(
-              (sum, size) => sum + size.stock,
-              0,
-            );
-            if (totalSizeStock !== variant.totalStock) {
-              throw new Error(
-                `Total stock (${variant.totalStock}) for variant ${variant.variantCode} does not match sum of size stocks (${totalSizeStock})`,
-              );
-            }
+            // Note: New variant has 0 stock, stock will be added via StoreInventory
           }
         } catch (error) {
           throw new Error(
@@ -1939,6 +2014,20 @@ exports.updateProductDetails = async (req, res) => {
       const toDelete = dbVariants.filter((v) => !incomingIds.has(v.id));
 
       if (toDelete.length > 0) {
+        // Check if variants have any inventory before deletion
+        for (const v of toDelete) {
+          const inventoryCount = await StoreInventory.count({
+            where: { variantId: v.id },
+            transaction: t,
+          });
+          
+          if (inventoryCount > 0) {
+            throw new Error(
+              `Cannot delete variant ${v.variantCode} because it has existing inventory. Please remove inventory first.`
+            );
+          }
+        }
+
         // Delete images
         for (const v of toDelete) {
           for (const img of v.images) {
