@@ -312,7 +312,7 @@ exports.getProductById = async (req, res) => {
                 "length",
                 "diameter",
                 "approxWeightKg",
-                "stock",
+                // "stock",
               ],
             },
           ],
@@ -373,7 +373,7 @@ exports.getProductById = async (req, res) => {
         diameter: size.diameter,
         length: size.length,
         approxWeightKg: size.approxWeightKg,
-        stock: size.stock,
+        // stock: size.stock,
 
         display: `M${size.diameter} × ${size.length}`,
         value: `${size.diameter}-${size.length}`,

@@ -440,7 +440,7 @@ exports.getAllProductsDetails = async (req, res) => {
             {
               model: VariantSize,
               as: "sizes",
-              attributes: ["id", "length", "diameter", "approxWeightKg", "stock"],
+              attributes: ["id", "length", "diameter", "approxWeightKg"],
             },
             {
               model: ProductPrice,
@@ -519,7 +519,7 @@ exports.getAllProductsDetails = async (req, res) => {
               diameter: size.diameter,
               length: size.length,
               approxWeightKg: size.approxWeightKg,
-              stock: size.stock,
+              // stock: size.stock,
               display: size.diameter && size.length 
                 ? `M${size.diameter} × ${size.length}`
                 : size.diameter 
