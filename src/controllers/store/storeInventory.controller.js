@@ -181,3 +181,105 @@ exports.updateStock = async (req, res) => {
     });
   }
 };
+
+
+exports.getStoreInventory = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    const inventory = await StoreInventory.findAll({
+      where: { storeId },
+      include: [
+        {
+          model: ProductVariant,
+          as: "variant",
+          attributes: ["id", "variantCode", "totalStock", "stockStatus"]
+        },
+        {
+          model: VariantSize,
+          as: "size",
+          attributes: ["id", "length", "diameter"],
+        },
+      ],
+      order: [["variantId", "ASC"]],
+    });
+
+    res.json({
+      success: true,
+      count: inventory.length,
+      data: inventory,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getProductStock = async (req, res) => {
+  try {
+    const { storeId, productId } = req.params;
+
+    const inventory = await StoreInventory.findAll({
+      where: { storeId, productId },
+      include: [
+        {
+          model: ProductVariant,
+          as: "variant",
+          attributes: ["id", "variantCode", "totalStock", "stockStatus"]
+        },
+        {
+          model: VariantSize,
+          as: "size",
+          attributes: ["id", "length", "diameter"],
+        },
+      ],
+    });
+
+   res.json({
+      success: true,
+      count: inventory.length,
+      data: inventory,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getVariantStock = async (req, res) => {
+  try {
+    const { variantId } = req.params;
+
+    const stock = await StoreInventory.findAll({
+      where: { variantId },
+      include: [
+        {
+          model: VariantSize,
+          as: "size",
+          attributes: ["id", "length", "diameter"],
+        },
+      ],
+    });
+
+    // 🔥 Format clean response
+    const formatted = stock.map((item) => ({
+      variantSizeId: item.variantSizeId,
+      size: item.VariantSize?.size,
+      stock: item.stock,
+      isAvailable: item.isAvailable,
+    }));
+
+    res.json({
+      success: true,
+      data: formatted,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
