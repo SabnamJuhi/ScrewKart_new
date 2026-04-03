@@ -209,12 +209,23 @@ const {
   ProductCategory,
   ProductRating,
   ProductReview,
+  StoreInventory
 } = require("../../models");
 
 exports.getProductById = async (req, res) => {
   try {
+    const userId = req.user?.id;
     const { id } = req.params;
+    const { storeId } = req.query;
 
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "storeId is required",
+      });
+    }
+
+    /* ---------------- FETCH PRODUCT ---------------- */
     const product = await Product.findByPk(id, {
       attributes: [
         "id",
@@ -228,45 +239,27 @@ exports.getProductById = async (req, res) => {
         "createdAt",
         "updatedAt",
       ],
-
       include: [
-        // CATEGORY HIERARCHY
-        {
-          model: Category,
-          as: "Category",
-          attributes: ["id", "name"],
-        },
-        {
-          model: SubCategory,
-          as: "SubCategory",
-          attributes: ["id", "name"],
-        },
+        { model: Category, as: "Category", attributes: ["id", "name"] },
+        { model: SubCategory, as: "SubCategory", attributes: ["id", "name"] },
         {
           model: ProductCategory,
           as: "ProductCategory",
           attributes: ["id", "name"],
         },
-
-        // SPECS
         {
           model: ProductSpec,
           as: "specs",
           attributes: ["id", "specKey", "specValue"],
         },
-
-        // RATINGS
         {
           model: ProductRating,
           as: "rating",
         },
-
-        // REVIEWS
         {
           model: ProductReview,
           as: "reviews",
         },
-
-        // VARIANTS
         {
           model: ProductVariant,
           as: "variants",
@@ -278,12 +271,19 @@ exports.getProductById = async (req, res) => {
             "grade",
             "material",
             "threadType",
-            "totalStock",
-            "stockStatus",
             "isActive",
           ],
           include: [
-            // VARIANT PRICE
+            {
+              model: VariantImage,
+              as: "images",
+              attributes: ["id", "imageUrl"],
+            },
+            {
+              model: VariantSize,
+              as: "sizes",
+              attributes: ["id", "length", "diameter", "approxWeightKg"],
+            },
             {
               model: ProductPrice,
               as: "price",
@@ -295,35 +295,12 @@ exports.getProductById = async (req, res) => {
                 "currency",
               ],
             },
-
-            // IMAGES
-            {
-              model: VariantImage,
-              as: "images",
-              attributes: ["id", "imageUrl"],
-            },
-
-            // SIZES
-            {
-              model: VariantSize,
-              as: "sizes",
-              attributes: [
-                "id",
-                "length",
-                "diameter",
-                "approxWeightKg",
-                // "stock",
-              ],
-            },
           ],
         },
-
-        // OFFERS
         {
           model: OfferApplicableProduct,
           as: "offerApplicableProducts",
           attributes: ["id", "offerId", "subOfferId"],
-
           include: [
             {
               model: Offer,
@@ -338,7 +315,6 @@ exports.getProductById = async (req, res) => {
                 "endDate",
                 "isActive",
               ],
-
               include: [
                 {
                   model: OfferSub,
@@ -348,6 +324,7 @@ exports.getProductById = async (req, res) => {
                     "discountType",
                     "discountValue",
                     "maxDiscount",
+                    "minOrderValue",
                   ],
                 },
               ],
@@ -364,30 +341,115 @@ exports.getProductById = async (req, res) => {
       });
     }
 
+    /* ---------------- STORE INVENTORY ---------------- */
+    const inventory = await StoreInventory.findAll({
+      where: { storeId },
+    });
+
+    const inventoryMap = {};
+    inventory.forEach((inv) => {
+      const key = `${inv.variantId}-${inv.variantSizeId}`;
+      inventoryMap[key] = inv.stock;
+    });
+
+    /* ---------------- WISHLIST ---------------- */
+    let wishlistedVariants = [];
+
+    if (userId) {
+      const wishlist = await Wishlist.findAll({
+        where: { userId, productId: id },
+        attributes: ["variantId"],
+      });
+
+      wishlistedVariants = wishlist.map((w) => w.variantId);
+    }
+
+    /* ---------------- FINAL FORMAT ---------------- */
     const productData = product.toJSON();
 
-    // FORMAT SIZES FOR FRONTEND
     productData.variants = productData.variants.map((variant) => {
-      variant.sizes = variant.sizes.map((size) => ({
-        id: size.id,
-        diameter: size.diameter,
-        length: size.length,
-        approxWeightKg: size.approxWeightKg,
-        // stock: size.stock,
+      let variantTotalStock = 0;
 
-        display: `M${size.diameter} × ${size.length}`,
-        value: `${size.diameter}-${size.length}`,
-      }));
+      const mrp = variant.price?.mrp || 0;
+      const sellingPrice = variant.price?.sellingPrice || 0;
+      const gstRate = productData.gstRate || 0;
 
-      return variant;
+      const gstAmount = (sellingPrice * gstRate) / 100;
+      const gstInclusiveAmount = Math.round(sellingPrice + gstAmount);
+
+      const discount = mrp > 0 ? mrp - sellingPrice : 0;
+      const discountPercentage =
+        mrp > 0 ? Math.round((discount / mrp) * 100) : 0;
+
+      const sizes = variant.sizes.map((size) => {
+        const key = `${variant.id}-${size.id}`;
+        const stock = inventoryMap[key] || 0;
+
+        variantTotalStock += stock;
+
+        return {
+          id: size.id,
+          diameter: size.diameter,
+          length: size.length,
+          approxWeightKg: size.approxWeightKg,
+
+          stock,
+          isAvailable: stock > 0,
+
+          display:
+            size.diameter && size.length
+              ? `M${size.diameter} × ${size.length}`
+              : size.diameter
+                ? `D${size.diameter}`
+                : size.length
+                  ? `L${size.length}`
+                  : "Standard",
+
+          value:
+            size.diameter && size.length
+              ? `${size.diameter}-${size.length}`
+              : size.diameter
+                ? `${size.diameter}`
+                : size.length
+                  ? `${size.length}`
+                  : "std",
+        };
+      });
+
+      return {
+        ...variant,
+        sizes,
+        totalStock: variantTotalStock,
+        stockStatus: variantTotalStock > 0 ? "In Stock" : "Out of Stock",
+
+        isWishlisted: wishlistedVariants.includes(variant.id),
+
+        price: {
+          ...(variant.price?.toJSON?.() || {}),
+
+          mrp,
+          sellingPrice,
+          gstRate,
+
+          gstAmount: Math.round(gstAmount),
+          gstInclusiveAmount,
+
+          discount,
+          discountPercentage,
+        },
+      };
     });
 
     return res.json({
       success: true,
-      data: productData,
+      data: {
+        ...productData,
+        isWishlisted: wishlistedVariants.length > 0,
+        wishlistedVariants,
+      },
     });
   } catch (error) {
-    console.error("GET PRODUCT ERROR:", error);
+    console.error("GET PRODUCT DETAILS ERROR:", error);
 
     return res.status(500).json({
       success: false,

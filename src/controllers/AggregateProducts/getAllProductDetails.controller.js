@@ -339,6 +339,9 @@
 //   }
 // };
 
+
+
+
 const sequelize = require("../../config/db");
 
 const Product = require("../../models/products/product.model");
