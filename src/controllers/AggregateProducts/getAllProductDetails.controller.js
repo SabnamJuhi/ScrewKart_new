@@ -148,8 +148,6 @@
 //   }
 // };
 
-
-
 // const sequelize = require("../../config/db");
 
 // const Product = require("../../models/products/product.model");
@@ -341,10 +339,6 @@
 //   }
 // };
 
-
-
-
-
 const sequelize = require("../../config/db");
 
 const Product = require("../../models/products/product.model");
@@ -360,7 +354,13 @@ const OfferApplicableProduct = require("../../models/offers/offerApplicableProdu
 
 const Wishlist = require("../../models/wishlist.model");
 
-const { Category, SubCategory, ProductCategory } = require("../../models");
+const {
+  Category,
+  SubCategory,
+  ProductCategory,
+  StoreInventory,
+} = require("../../models");
+
 const {
   getPaginationOptions,
   formatPagination,
@@ -369,16 +369,24 @@ const {
 exports.getAllProductsDetails = async (req, res) => {
   try {
     const userId = req.user?.id;
-    const paginationOptions = getPaginationOptions(req.query);
-    
-    /* ---------------- DYNAMIC WHERE ---------------- */
-    const productWhere = {};
+    const { storeId } = req.query;
 
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "storeId is required",
+      });
+    }
+
+    const paginationOptions = getPaginationOptions(req.query);
+
+    /* ---------------- FILTER ---------------- */
+    const productWhere = {};
     if (req.query.isActive !== undefined) {
       productWhere.isActive = req.query.isActive === "true";
     }
 
-    /* ---------------- GET PRODUCTS ---------------- */
+    /* ---------------- FETCH PRODUCTS ---------------- */
     const products = await Product.findAndCountAll({
       where: productWhere,
       attributes: [
@@ -391,31 +399,20 @@ exports.getAllProductsDetails = async (req, res) => {
         "gstRate",
         "isActive",
         "createdAt",
-        "updatedAt",
       ],
-
       include: [
-        { 
-          model: Category, 
-          as: "Category", 
-          attributes: ["id", "name"] 
-        },
-        { 
-          model: SubCategory, 
-          as: "SubCategory", 
-          attributes: ["id", "name"] 
-        },
+        { model: Category, as: "Category", attributes: ["id", "name"] },
+        { model: SubCategory, as: "SubCategory", attributes: ["id", "name"] },
         {
           model: ProductCategory,
           as: "ProductCategory",
           attributes: ["id", "name"],
         },
-        { 
-          model: ProductSpec, 
+        {
+          model: ProductSpec,
           as: "specs",
-          attributes: ["id", "specKey", "specValue"]
+          attributes: ["id", "specKey", "specValue"],
         },
-
         {
           model: ProductVariant,
           as: "variants",
@@ -427,8 +424,6 @@ exports.getAllProductsDetails = async (req, res) => {
             "grade",
             "material",
             "threadType",
-            "totalStock",
-            "stockStatus",
             "isActive",
           ],
           include: [
@@ -445,11 +440,16 @@ exports.getAllProductsDetails = async (req, res) => {
             {
               model: ProductPrice,
               as: "price",
-              attributes: ["id", "mrp", "sellingPrice", "discountPercentage", "currency"],
+              attributes: [
+                "id",
+                "mrp",
+                "sellingPrice",
+                "discountPercentage",
+                "currency",
+              ],
             },
           ],
         },
-
         {
           model: OfferApplicableProduct,
           as: "offerApplicableProducts",
@@ -490,6 +490,17 @@ exports.getAllProductsDetails = async (req, res) => {
       ...paginationOptions,
     });
 
+    /* ---------------- STORE INVENTORY MAP ---------------- */
+    const inventory = await StoreInventory.findAll({
+      where: { storeId },
+    });
+
+    const inventoryMap = {};
+    inventory.forEach((inv) => {
+      const key = `${inv.variantId}-${inv.variantSizeId}`;
+      inventoryMap[key] = inv.stock;
+    });
+
     /* ---------------- WISHLIST MAP ---------------- */
     let wishlistedMap = {};
 
@@ -507,49 +518,92 @@ exports.getAllProductsDetails = async (req, res) => {
       });
     }
 
-    /* ---------------- ADD FLAGS ---------------- */
+    /* ---------------- FINAL RESPONSE ---------------- */
     const finalProducts = products.rows.map((p) => {
-      const productJSON = p.toJSON();
-      
-      if (productJSON.variants) {
-        productJSON.variants = productJSON.variants.map((variant) => {
-          if (variant.sizes) {
-            variant.sizes = variant.sizes.map((size) => ({
-              id: size.id,
-              diameter: size.diameter,
-              length: size.length,
-              approxWeightKg: size.approxWeightKg,
-              // stock: size.stock,
-              display: size.diameter && size.length 
-                ? `M${size.diameter} × ${size.length}`
-                : size.diameter 
-                  ? `D${size.diameter}`
-                  : size.length 
-                    ? `L${size.length}`
-                    : 'Standard',
-              value: size.diameter && size.length 
-                ? `${size.diameter}-${size.length}`
-                : size.diameter 
-                  ? `${size.diameter}`
-                  : size.length 
-                    ? `${size.length}`
-                    : 'std',
-            }));
-          }
-          return variant;
-        });
-      }
+      const product = p.toJSON();
 
-      const productWishlisted = !!wishlistedMap[productJSON.id];
+      product.variants = product.variants.map((variant) => {
+        let variantTotalStock = 0;
+
+        // 🔥 PRICE VALUES
+        const mrp = variant.price?.mrp || 0;
+        const sellingPrice = variant.price?.sellingPrice || 0;
+        const gstRate = product.gstRate || 0;
+
+        // 🔥 CALCULATIONS
+        const gstAmount = (sellingPrice * gstRate) / 100;
+        const gstInclusiveAmount = Math.round(sellingPrice + gstAmount);
+
+        const discount = mrp > 0 ? mrp - sellingPrice : 0;
+        const discountPercentage =
+          mrp > 0 ? Math.round((discount / mrp) * 100) : 0;
+
+        const sizes = variant.sizes.map((size) => {
+          const key = `${variant.id}-${size.id}`;
+          const stock = inventoryMap[key] || 0;
+
+          variantTotalStock += stock;
+
+          return {
+            id: size.id,
+            diameter: size.diameter,
+            length: size.length,
+            approxWeightKg: size.approxWeightKg,
+
+            stock,
+            isAvailable: stock > 0,
+
+            display:
+              size.diameter && size.length
+                ? `M${size.diameter} × ${size.length}`
+                : size.diameter
+                  ? `D${size.diameter}`
+                  : size.length
+                    ? `L${size.length}`
+                    : "Standard",
+
+            value:
+              size.diameter && size.length
+                ? `${size.diameter}-${size.length}`
+                : size.diameter
+                  ? `${size.diameter}`
+                  : size.length
+                    ? `${size.length}`
+                    : "std",
+          };
+        });
+
+        return {
+          ...variant,
+
+          sizes,
+          totalStock: variantTotalStock,
+          stockStatus: variantTotalStock > 0 ? "In Stock" : "Out of Stock",
+
+          // 🔥 FINAL PRICE OBJECT
+          price: {
+            ...(variant.price?.toJSON?.() || {}),
+
+            mrp,
+            sellingPrice,
+            gstRate,
+
+            gstAmount: Math.round(gstAmount),
+            gstInclusiveAmount,
+
+            discount,
+            discountPercentage,
+          },
+        };
+      });
 
       return {
-        ...productJSON,
-        isWishlisted: productWishlisted,
-        wishlistedVariants: wishlistedMap[productJSON.id] || [],
+        ...product,
+        isWishlisted: !!wishlistedMap[product.id],
+        wishlistedVariants: wishlistedMap[product.id] || [],
       };
     });
 
-    /* ---------------- FINAL PAGINATED RESPONSE ---------------- */
     const response = formatPagination(
       { count: products.count, rows: finalProducts },
       paginationOptions.currentPage,
@@ -561,7 +615,7 @@ exports.getAllProductsDetails = async (req, res) => {
       ...response,
     });
   } catch (error) {
-    console.error("GET ALL PRODUCTS ERROR:", error);
+    console.error("GET PRODUCTS ERROR:", error);
     return res.status(500).json({
       success: false,
       message: error.message,

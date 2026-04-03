@@ -80,8 +80,11 @@
 const moment = require("moment");
 
 exports.isStoreOpen = (store) => {
-  const now = moment();
-  const currentTime = now.format("HH:mm");
+  // const now = moment();
+  // const currentTime = now.format("HH:mm");
+  const currentTime = moment()
+  .tz("Asia/Kolkata")
+  .format("HH:mm:ss");
 
   // Normalize manual flag
   const manual =
