@@ -14,11 +14,12 @@ const { getProductFilters } = require("../../controllers/AggregateProducts/getPr
 const { getFilteredProducts } = require("../../controllers/AggregateProducts/getFilteredProduct.controller");
 
 const adminAuth = require("../../middleware/admin.auth.middleware")
-const {protected, optionalAuth} = require("../../middleware/user.logout.middleware")
+const {protected, optionalAuth} = require("../../middleware/user.logout.middleware");
+const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
 
 
 // router.post("/products", upload.any(), productController.createProduct)
-router.post("/products", upload.any(), adminAuth, createProduct)
+router.post("/products", upload.any(), adminAuth,   allowAdminRoles("superAdmin"), createProduct)
 
 
 // router.get("/filter", productController.getFilteredProducts);
@@ -32,13 +33,13 @@ router.get("/", getAllProductsDetails)
 router.get("/:id", getProductById)
 
 // router.put("/:id", upload.any(), productController.updateProductDetails)
-router.put("/:id", upload.any(), adminAuth, updateProductDetails)
+router.put("/:id", upload.any(), adminAuth,  allowAdminRoles("superAdmin"), updateProductDetails)
 
 // router.delete('/:id', productController.softDeleteProduct)
-router.delete('/:id', adminAuth, softDeleteProduct)
+router.delete('/:id', adminAuth,  allowAdminRoles("superAdmin"), softDeleteProduct)
 
 // router.delete('/delete/:id', productController.deleteProductPermanently)
-router.delete('/delete/:id', adminAuth, deleteProductPermanently)
+router.delete('/delete/:id', adminAuth,  allowAdminRoles("superAdmin"), deleteProductPermanently)
 
 
 module.exports = router

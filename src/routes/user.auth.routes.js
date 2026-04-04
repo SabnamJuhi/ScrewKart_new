@@ -39,7 +39,8 @@ const {
 } = require("../controllers/user.auth.controller");
 const { protect } = require("../middleware/user.auth.middleware");
 const {protected} = require("../middleware/user.logout.middleware")
-const adminAuth = require("../middleware/admin.auth.middleware")
+const adminAuth = require("../middleware/admin.auth.middleware");
+const { allowAdminRoles } = require("../middleware/admin.role.middleware");
 
 const router = express.Router();
 
@@ -50,7 +51,7 @@ router.post("/login", login);
 router.delete("/users/:id", protected, deleteUser);
 // router.delete("/admin/users/:id", protected, adminAuth, deleteUser);
 router.post("/logout", protected, logout);
-router.get("/users", adminAuth, getUsers);
+router.get("/users", adminAuth,  allowAdminRoles("superAdmin"), getUsers);
 router.get("/users/:id", protected, getUserById);
 
 // Forgot-password

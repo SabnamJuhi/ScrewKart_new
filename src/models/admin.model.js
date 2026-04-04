@@ -23,6 +23,14 @@ const Admin = sequelize.define("Admin", {
   password: {
     type: DataTypes.STRING,
     allowNull: false
+  },
+  role: {
+    type: DataTypes.ENUM("superAdmin", "storeAdmin"),
+    defaultValue: "storeAdmin"
+  },
+  storeId: {
+    type: DataTypes.INTEGER,
+    allowNull: true // required only for storeAdmin
   }
 })
 
