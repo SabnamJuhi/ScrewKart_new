@@ -5,8 +5,12 @@ const {
   ProductVariant,
   VariantImage,
   VariantSize,
+  Store,
 } = require("../../models");
 const { StoreInventory } = require("../../models");
+const { getDeliveryCharge } = require("../../utils/deliveryCharges");
+const { getDistanceKm } = require("../../utils/distance");
+const checkCartStoreConflict = require("../../utils/checkCartStoreConflict");
 
 // exports.getCart = async (req, res) => {
 //   try {
@@ -290,6 +294,18 @@ exports.getCart = async (req, res) => {
   try {
     const userId = req.user.id;
 
+    // 👉 You MUST get user location (from request / DB)
+    const { userLat, userLng } = req.query;
+     const { latitude, longitude } = req.query;
+    
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: "User location required",
+      });
+    }
+
     const cartItems = await CartItem.findAll({
       where: { userId },
       include: [
@@ -313,29 +329,68 @@ exports.getCart = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    let subTotal = 0;     // base total (without GST)
-    let taxAmount = 0;    // total GST
+    if (!cartItems.length) {
+      return res.json({
+        success: true,
+        data: [],
+        summary: {
+          itemsCount: 0,
+          totalQuantity: 0,
+          subTotal: 0,
+          tax: { amount: 0 },
+          shippingFee: 0,
+          grandTotal: 0,
+          currency: "INR",
+          canCheckout: false,
+        },
+      });
+    }
+
+    // 🔥 GET STORE (assuming all items belong to same store)
+    const storeId = cartItems[0].storeId;
+
+    const store = await Store.findByPk(storeId);
+
+    if (!store) {
+      return res.status(400).json({
+        success: false,
+        message: "Store not found",
+      });
+    }
+
+    // 🔥 CALCULATE DISTANCE
+    const distanceKm = getDistanceKm(
+      Number(latitude),
+      Number(longitude),
+      Number(store.latitude),
+      Number(store.longitude)
+    );
+
+    // 🔥 GET ALL INVENTORY IN ONE QUERY (OPTIMIZED)
+    const inventoryList = await StoreInventory.findAll({
+      where: { storeId },
+    });
+
+    const inventoryMap = {};
+    inventoryList.forEach((inv) => {
+      const key = `${inv.variantId}-${inv.variantSizeId}`;
+      inventoryMap[key] = inv.stock;
+    });
+
+    let subTotal = 0;
+    let taxAmount = 0;
     let totalQuantity = 0;
 
     const items = [];
 
     for (const item of cartItems) {
-      // ✅ SAFE NUMBER CONVERSION
       const sellingPrice = Number(item.variant?.price?.sellingPrice) || 0;
       const mrp = Number(item.variant?.price?.mrp) || 0;
       const gstRate = Number(item.product?.gstRate) || 0;
 
-      // 🔥 INVENTORY CHECK (REAL SOURCE)
-      const inventory = await StoreInventory.findOne({
-        where: {
-          storeId: item.storeId,
-          productId: item.productId,
-          variantId: item.variantId,
-          variantSizeId: item.sizeId,
-        },
-      });
-
-      const currentStock = inventory?.stock || 0;
+      // 🔥 STOCK FROM MAP
+      const key = `${item.variantId}-${item.sizeId}`;
+      const currentStock = inventoryMap[key] || 0;
 
       const isAvailable = currentStock > 0;
       const status = isAvailable ? "In Stock" : "Out of Stock";
@@ -344,16 +399,15 @@ exports.getCart = async (req, res) => {
         ? Math.min(item.quantity, currentStock)
         : 0;
 
-      // 🔥 GST CALCULATION (PER UNIT)
+      // 🔥 GST
       const gstAmountPerUnit = Math.round((sellingPrice * gstRate) / 100);
       const finalPricePerUnit = Math.round(sellingPrice + gstAmountPerUnit);
 
-      // 🔥 TOTAL CALCULATION
+      // 🔥 TOTALS
       const itemBaseTotal = sellingPrice * validQuantity;
       const itemGstTotal = gstAmountPerUnit * validQuantity;
       const itemFinalTotal = finalPricePerUnit * validQuantity;
 
-      // 🔥 ACCUMULATE (ONLY IF AVAILABLE)
       if (isAvailable) {
         subTotal += itemBaseTotal;
         taxAmount += itemGstTotal;
@@ -382,13 +436,12 @@ exports.getCart = async (req, res) => {
           isAvailable,
         },
 
-        // 🔥 PRICE STRUCTURE
         price: {
           mrp,
           basePrice: sellingPrice,
           gstRate,
           gstAmount: gstAmountPerUnit,
-          finalPrice: finalPricePerUnit, // ✅ USE THIS IN CART UI
+          finalPrice: finalPricePerUnit,
           discount: mrp > 0 ? mrp - sellingPrice : 0,
           discountPercentage:
             mrp > 0 ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0,
@@ -396,18 +449,29 @@ exports.getCart = async (req, res) => {
 
         quantity: validQuantity,
 
-        // 🔥 TOTALS
         totals: {
           baseTotal: itemBaseTotal,
           gstTotal: itemGstTotal,
-          finalTotal: itemFinalTotal, // ✅ USE THIS IN CART UI
+          finalTotal: itemFinalTotal,
         },
       });
     }
 
-    // 🚚 SHIPPING LOGIC
-    const shippingFee = subTotal > 5000 || subTotal === 0 ? 0 : 150;
+    // 🔥 DELIVERY CALCULATION
+    const deliveryResult = getDeliveryCharge(distanceKm, subTotal);
 
+    if (!deliveryResult.isServiceable) {
+      return res.json({
+        success: true,
+        data: items,
+        summary: {
+          isServiceable: false,
+          message: "Delivery not available in your area",
+        },
+      });
+    }
+
+    const shippingFee = deliveryResult.deliveryCharge;
     const grandTotal = subTotal + taxAmount + shippingFee;
 
     return res.json({
@@ -417,19 +481,21 @@ exports.getCart = async (req, res) => {
         itemsCount: items.length,
         totalQuantity,
 
-        // 🔥 FOR CHECKOUT PAGE
-        subTotal, // base total
-        tax: {
-          amount: taxAmount,
-        },
-
-        // 🔥 FOR CART PAGE (USE THIS DIRECTLY)
-        grandTotal,
+        subTotal,
+        tax: { amount: taxAmount },
 
         shippingFee,
+        grandTotal,
+
         currency: "INR",
 
-        // ✅ VALIDATION
+        distanceKm: Number(distanceKm.toFixed(2)),
+        deliveryMessage: deliveryResult.message,
+        isServiceable: true,
+
+        freeDeliveryThreshold: 999,
+        amountToFreeDelivery: subTotal >= 999 ? 0 : 999 - subTotal,
+
         canCheckout:
           items.length > 0 &&
           items.every((i) => i.variant.isAvailable && i.quantity > 0),
@@ -450,6 +516,17 @@ exports.addToCart = async (req, res) => {
     const { productId, variantId, sizeId, storeId, quantity = 1 } = req.body;
 
     const userId = req.user.id;
+
+     // 🔥 CHECK STORE CONFLICT
+    const check = await checkCartStoreConflict(userId, storeId);
+
+     if (!check.allowed) {
+      return res.status(400).json({
+        success: false,
+        message: check.message,
+        action: "CLEAR_CART_REQUIRED",
+      });
+    }
 
     // ✅ 1. Quantity validation
     if (quantity < 1) {
@@ -817,4 +894,39 @@ exports.deleteCartItem = async (req, res) => {
       message: "Server error while deleting cart item",
     });
   }
+};
+
+
+exports.clearCart = async (req, res) => {
+  const userId = req.user.id;
+
+  await CartItem.destroy({ where: { userId } });
+
+  res.json({
+    success: true,
+    message: "Cart cleared successfully",
+  });
+};
+
+
+
+exports.validateLocationChange = async (req, res) => {
+  const userId = req.user.id;
+  const { newStoreId } = req.body;
+
+  const existingItem = await CartItem.findOne({ where: { userId } });
+
+  if (!existingItem) {
+    return res.json({ allowed: true });
+  }
+
+  if (existingItem.storeId !== newStoreId) {
+    return res.json({
+      allowed: false,
+      message:
+        "Your cart contains items from another store. Please clear cart first.",
+    });
+  }
+
+  return res.json({ allowed: true });
 };

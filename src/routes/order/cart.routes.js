@@ -9,7 +9,11 @@ router.get("/", cartCtrl.getCart);
 router.post("/add", cartCtrl.addToCart);
 router.post("/merge", cartCtrl.mergeGuestCart);
 router.post("/decrease", cartCtrl.decreaseQuantity);
+router.post("/validate-location-change", cartCtrl.validateLocationChange);
+router.delete("/", cartCtrl.clearCart);
 router.delete("/item",  cartCtrl.deleteCartItem)
 router.delete("/:cartId", cartCtrl.removeFromCart);
+
+
 
 module.exports = router;
