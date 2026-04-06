@@ -16,6 +16,7 @@ const { getFilteredProducts } = require("../../controllers/AggregateProducts/get
 const adminAuth = require("../../middleware/admin.auth.middleware")
 const {protected, optionalAuth} = require("../../middleware/user.logout.middleware");
 const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
+const { getAllProductsDetailsAdmin, getProductDetailsByIdAdmin } = require("../../controllers/AggregateProducts/adminSide/product.admin.controller");
 
 
 // router.post("/products", upload.any(), productController.createProduct)
@@ -40,6 +41,11 @@ router.delete('/:id', adminAuth,  allowAdminRoles("superAdmin"), softDeleteProdu
 
 // router.delete('/delete/:id', productController.deleteProductPermanently)
 router.delete('/delete/:id', adminAuth,  allowAdminRoles("superAdmin"), deleteProductPermanently)
+
+
+//ADMIN SIDE
+router.get('/admin/products', getAllProductsDetailsAdmin)
+router.get('/admin/products/:id', getProductDetailsByIdAdmin)
 
 
 module.exports = router
