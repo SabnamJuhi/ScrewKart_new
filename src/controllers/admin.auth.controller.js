@@ -5,7 +5,8 @@ const { secret, expiresIn } = require("../config/jwt");
 
 // Register Admin
 exports.registerAdmin = async (req, res) => {
-  const { fullName, email, password, confirmPassword, mobile, role, storeId } = req.body;
+  const { fullName, email, password, confirmPassword, mobile, role, storeId } =
+    req.body;
 
   if (!fullName || !email || !password || !confirmPassword || !mobile) {
     return res.status(400).json({ message: "All fields are required" });
@@ -71,5 +72,9 @@ exports.loginAdmin = async (req, res) => {
   res.json({
     message: "Login successful",
     token,
+    admin: {
+      role: admin.role,
+      storeId: admin.storeId,
+    },
   });
 };

@@ -198,6 +198,7 @@ const ProductSpec = require("../../models/products/productSpec.model");
 const ProductVariant = require("../../models/productVariants/productVariant.model");
 const VariantImage = require("../../models/productVariants/variantImage.model");
 const VariantSize = require("../../models/productVariants/variantSize.model");
+const Wishlist = require("../../models/wishlist.model");
 
 const Offer = require("../../models/offers/offer.model");
 const OfferSub = require("../../models/offers/offerSub.model");
