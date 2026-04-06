@@ -847,21 +847,20 @@ exports.removeFromCart = async (req, res) => {
   }
 };
 
-// DELETE /api/cart/item
+//Delete cart item
 exports.deleteCartItem = async (req, res) => {
   try {
     const userId = req.user?.id || req.body.userId;
 
-    const { productId, variantId, sizeId } = req.body;
+    const { productId, variantId, sizeId, storeId } = req.body;
 
-    if (!productId || !variantId || !sizeId) {
+    if (!productId || !variantId || !sizeId || !storeId) {
       return res.status(400).json({
         success: false,
-        message: "productId, variantId and sizeId are required",
+        message: "productId, variantId, sizeId and storeId are required",
       });
     }
 
-    // Find exact cart row
     const cartItem = await CartItem.findOne({
       where: {
         userId,
@@ -879,13 +878,13 @@ exports.deleteCartItem = async (req, res) => {
       });
     }
 
-    // Delete whole row (even if quantity = 29 or 14 etc.)
     await cartItem.destroy();
 
     return res.status(200).json({
       success: true,
       message: "Cart item deleted successfully",
     });
+
   } catch (error) {
     console.error("Delete cart item error:", error);
 
