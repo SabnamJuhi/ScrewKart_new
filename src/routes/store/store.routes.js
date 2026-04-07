@@ -25,6 +25,9 @@ const {
   getStoreInventory,
   getProductStock,
   getVariantStock,
+  deleteStoreInventory,
+  deleteVariantInventory,
+  deleteStoreAllInventory,
 } = require("../../controllers/store/storeInventory.controller");
 const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
 const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
@@ -76,5 +79,26 @@ router.post(
 router.get("/:storeId/inventory", getStoreInventory);
 router.get("/:storeId/product/:productId", getProductStock);
 router.get("/:variantId/stock", getVariantStock);
+
+router.delete(
+  "/inventory/:storeId/:variantId/:variantSizeId",
+  adminAuthMiddleware,
+  allowAdminRoles("superAdmin", "storeAdmin"),
+  checkStoreAccess,
+  deleteStoreInventory,
+);
+router.delete(
+  "/inventory/variant/:variantId",
+  adminAuthMiddleware,
+  allowAdminRoles("superAdmin"),
+  deleteVariantInventory,
+);
+router.delete(
+  "/inventory/store/:storeId",
+  adminAuthMiddleware,
+  allowAdminRoles("superAdmin", "storeAdmin"),
+  checkStoreAccess,
+  deleteStoreAllInventory,
+);
 
 module.exports = router;
