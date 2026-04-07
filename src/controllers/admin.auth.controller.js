@@ -182,7 +182,6 @@ exports.getAdminById = async (req, res) => {
   }
 };
 
-
 // Update admin (Only accessible by Super Admin or the admin themselves)
 exports.updateAdmin = async (req, res) => {
   try {
@@ -190,8 +189,7 @@ exports.updateAdmin = async (req, res) => {
     const { 
       fullName, 
       mobile, 
-      password, 
-      confirmPassword,
+      password,
       newPassword,
       confirmNewPassword,
       storeId, 
@@ -232,7 +230,7 @@ exports.updateAdmin = async (req, res) => {
           return res.status(400).json({ message: "New password and confirm password do not match" });
         }
 
-        // Validate password strength (optional)
+        // Validate password strength
         if (newPassword.length < 6) {
           return res.status(400).json({ message: "Password must be at least 6 characters long" });
         }
@@ -240,11 +238,18 @@ exports.updateAdmin = async (req, res) => {
         // Update password
         admin.password = await bcrypt.hash(newPassword, 10);
       }
-      // Case 2: Super Admin updating store admin's password (doesn't require current password)
-      else if (req.admin.role === "superAdmin" && admin.role === "storeAdmin") {
+      // Case 2: Super Admin updating another admin's password
+      else if (req.admin.role === "superAdmin") {
+        // Allow Super Admin to update any admin's password except their own
+        if (req.admin.id === parseInt(id)) {
+          return res.status(400).json({ 
+            message: "Use the current password flow to update your own password" 
+          });
+        }
+
         if (!newPassword || !confirmNewPassword) {
           return res.status(400).json({ 
-            message: "New password and confirm password are required to update store admin password" 
+            message: "New password and confirm password are required to update admin password" 
           });
         }
 
@@ -316,6 +321,13 @@ exports.updateAdmin = async (req, res) => {
         if (role === "storeAdmin" && !storeId && !admin.storeId) {
           return res.status(400).json({ 
             message: "Store ID is required when changing role to storeAdmin" 
+          });
+        }
+        
+        // Prevent changing another Super Admin's role to something else
+        if (admin.role === "superAdmin" && role !== "superAdmin") {
+          return res.status(403).json({ 
+            message: "Cannot demote another Super Admin. Only they can change their own role." 
           });
         }
         

@@ -17,6 +17,7 @@ const adminAuth = require("../../middleware/admin.auth.middleware")
 const {protected, optionalAuth} = require("../../middleware/user.logout.middleware");
 const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
 const { getAllProductsDetailsAdmin, getProductDetailsByIdAdmin } = require("../../controllers/AggregateProducts/adminSide/product.admin.controller");
+const { calculateProductPrice } = require("../../controllers/AggregateProducts/calculateProductPrice.controller");
 
 
 // router.post("/products", upload.any(), productController.createProduct)
@@ -46,6 +47,8 @@ router.delete('/delete/:id', adminAuth,  allowAdminRoles("superAdmin"), deletePr
 //ADMIN SIDE
 router.get('/admin/products', getAllProductsDetailsAdmin)
 router.get('/admin/products/:id', getProductDetailsByIdAdmin)
+
+router.post('/calculate-price', calculateProductPrice)
 
 
 module.exports = router
