@@ -1111,7 +1111,7 @@ const priceService = require("../../services/price.service");
 const VariantPricingSlab = require("../../models/products/variantPricingSlab.model");
 
 const ProductMeasurement = require("../../models/products/ProductMeasurement.model");
-const ProductAttribute = require("../../models/products/productAttribute.model");
+const ProductAttribute = require("../../models/products/ProductAttribute.model");
 
 const generateSKU = require("../../utils/skuGenerator");
 
