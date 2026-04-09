@@ -10,26 +10,11 @@ ProductPrice.init(
       primaryKey: true,
       autoIncrement: true,
     },
-    // productId: {
-    //   type: DataTypes.INTEGER,
-    //   allowNull: false
-    // },
     variantId: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    // mrp: {
-    //   type: DataTypes.DECIMAL(10, 2),
-    //   allowNull: false,
-    // },
-    // sellingPrice: {
-    //   type: DataTypes.DECIMAL(10, 2),
-    //   allowNull: false,
-    // },
-    // discountPercentage: {
-    //   type: DataTypes.DECIMAL(5, 2),
-    //   allowNull: false,
-    // },
+   
     mrp: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,

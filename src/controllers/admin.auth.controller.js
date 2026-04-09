@@ -182,7 +182,8 @@ exports.getAdminById = async (req, res) => {
   }
 };
 
-// Update admin (Only accessible by Super Admin or the admin themselves)
+
+
 exports.updateAdmin = async (req, res) => {
   try {
     const { id } = req.params;
