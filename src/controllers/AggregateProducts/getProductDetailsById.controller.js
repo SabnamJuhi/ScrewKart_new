@@ -518,7 +518,7 @@ exports.getProductById = async (req, res) => {
           model: ProductVariant,
           as: "variants",
           attributes: [
-            "id", "variantCode", "unit", "moq", "packingType",
+            "id", "variantCode", "unit", "moq", "packingType","packQuantity",
             "dispatchType", "deliverySla", "isActive", "totalStock", "stockStatus",
           ],
           include: [

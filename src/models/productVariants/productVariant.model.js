@@ -69,6 +69,7 @@
 
 
 
+
 const { Model, DataTypes } = require("sequelize");
 const sequelize = require("../../config/db");
 
@@ -94,6 +95,10 @@ ProductVariant.init(
     packingType: {
       type: DataTypes.ENUM("LOOSE", "BOX"),
     },
+    packQuantity: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     dispatchType: {
       type: DataTypes.ENUM("INSTANT", "CUSTOM"),
       defaultValue: "INSTANT",
@@ -115,7 +120,7 @@ ProductVariant.init(
   {
     sequelize,
     tableName: "product_variants",
-  }
+  },
 );
 
 module.exports = ProductVariant;

@@ -705,6 +705,7 @@ exports.getAllProductsDetails = async (req, res) => {
             "unit",
             "moq",
             "packingType",
+            "packQuantity",
             "dispatchType",
             "deliverySla",
             "isActive",

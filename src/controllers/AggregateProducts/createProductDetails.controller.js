@@ -1097,8 +1097,6 @@
 
 
 
-
-
 const sequelize = require("../../config/db");
 const { ValidationError } = require("sequelize");
 
@@ -1348,8 +1346,8 @@ exports.createProduct = async (req, res) => {
       const attrRows = Object.entries(parsedAttributes).map(([key, value]) => ({
         productId: product.id,
         variantId: null,
-        attributeKey: key,
-        attributeValue: String(value),
+        attributeKey: String(key).substring(0, 255),
+        attributeValue: String(value).substring(0, 500),
       }));
 
       await ProductAttribute.bulkCreate(attrRows, { transaction: t });
@@ -1361,7 +1359,7 @@ exports.createProduct = async (req, res) => {
         productId: product.id,
         variantId: null,
         measurementId: m.measurementId,
-        value: String(m.value),
+        value: String(m.value).substring(0, 255),
       }));
 
       await ProductMeasurement.bulkCreate(measurementRows, {
@@ -1391,35 +1389,80 @@ exports.createProduct = async (req, res) => {
           }
         );
 
-        const validatedUnit = validateString(v.unit, `variants[${variantIndex}].unit`, {
-          minLength: 1,
-          maxLength: 10,
-          required: false,
-        }) || "PCS";
+        // Validate unit (ENUM: PCS, BOX)
+        let validatedUnit = "PCS";
+        if (v.unit) {
+          const unitValue = validateString(v.unit, `variants[${variantIndex}].unit`, {
+            minLength: 1,
+            maxLength: 10,
+            required: false,
+          });
+          if (unitValue && ["PCS", "BOX"].includes(unitValue)) {
+            validatedUnit = unitValue;
+          }
+        }
 
+        // Validate MOQ
         const validatedMoq = validateNumber(v.moq, `variants[${variantIndex}].moq`, {
           min: 1,
           isInteger: true,
           required: false,
         }) || 1;
 
-        const validatedPackingType = validateString(
-          v.packingType,
-          `variants[${variantIndex}].packingType`,
-          { required: false, maxLength: 100 }
-        );
+        // Validate packingType (ENUM: LOOSE, BOX)
+        let validatedPackingType = null;
+        if (v.packingType) {
+          const packingTypeValue = validateString(
+            v.packingType,
+            `variants[${variantIndex}].packingType`,
+            { required: false, maxLength: 10 }
+          );
+          if (packingTypeValue && ["LOOSE", "BOX"].includes(packingTypeValue)) {
+            validatedPackingType = packingTypeValue;
+          }
+        }
 
-        const validatedDispatchType = validateString(
-          v.dispatchType,
-          `variants[${variantIndex}].dispatchType`,
-          { required: false, maxLength: 50 }
-        ) || "INSTANT";
+        // Validate packQuantity (required if packingType is BOX)
+        let validatedPackQuantity = null;
+        if (v.packQuantity !== undefined && v.packQuantity !== null) {
+          validatedPackQuantity = validateNumber(
+            v.packQuantity,
+            `variants[${variantIndex}].packQuantity`,
+            {
+              required: false,
+              isInteger: true,
+              min: 1,
+            }
+          );
+        } else if (validatedPackingType === "BOX") {
+          throw new Error(`packQuantity is required when packingType is BOX for variant ${variantIndex}`);
+        }
 
-        const validatedDeliverySla = validateString(
-          v.deliverySla,
-          `variants[${variantIndex}].deliverySla`,
-          { required: false, maxLength: 100 }
-        );
+        // Validate dispatchType (ENUM: INSTANT, CUSTOM)
+        let validatedDispatchType = "INSTANT";
+        if (v.dispatchType) {
+          const dispatchTypeValue = validateString(
+            v.dispatchType,
+            `variants[${variantIndex}].dispatchType`,
+            { required: false, maxLength: 10 }
+          );
+          if (dispatchTypeValue && ["INSTANT", "CUSTOM"].includes(dispatchTypeValue)) {
+            validatedDispatchType = dispatchTypeValue;
+          }
+        }
+
+        // Validate deliverySla
+        let validatedDeliverySla = null;
+        if (v.deliverySla) {
+          validatedDeliverySla = validateString(
+            v.deliverySla,
+            `variants[${variantIndex}].deliverySla`,
+            { required: false, maxLength: 100 }
+          );
+          if (validatedDeliverySla) {
+            validatedDeliverySla = validatedDeliverySla.substring(0, 100);
+          }
+        }
 
         // ==================== PRICE VALIDATION ====================
 
@@ -1503,18 +1546,23 @@ exports.createProduct = async (req, res) => {
 
         // ==================== CREATE VARIANT ====================
 
-        const variant = await ProductVariant.create(
-          {
-            productId: product.id,
-            variantCode: validatedVariantCode,
-            unit: validatedUnit,
-            moq: validatedMoq,
-            packingType: validatedPackingType,
-            dispatchType: validatedDispatchType,
-            deliverySla: validatedDeliverySla,
-          },
-          { transaction: t }
-        );
+        const variantData = {
+          productId: product.id,
+          variantCode: validatedVariantCode,
+          unit: validatedUnit,
+          moq: validatedMoq,
+          packingType: validatedPackingType,
+          packQuantity: validatedPackQuantity,
+          dispatchType: validatedDispatchType,
+          deliverySla: validatedDeliverySla,
+          totalStock: 0,
+          stockStatus: "Out of Stock",
+          isActive: v.isActive !== undefined ? v.isActive : true,
+        };
+
+        console.log(`Creating variant ${variantIndex} with data:`, variantData);
+
+        const variant = await ProductVariant.create(variantData, { transaction: t });
 
         createdVariants.push(variant);
 
@@ -1568,8 +1616,8 @@ exports.createProduct = async (req, res) => {
           const variantAttrRows = v.attributes.map((a) => ({
             productId: product.id,
             variantId: variant.id,
-            attributeKey: a.attributeKey,
-            attributeValue: a.attributeValue,
+            attributeKey: String(a.attributeKey).substring(0, 255),
+            attributeValue: String(a.attributeValue).substring(0, 500),
           }));
 
           await ProductAttribute.bulkCreate(variantAttrRows, { transaction: t });
@@ -1582,7 +1630,7 @@ exports.createProduct = async (req, res) => {
             productId: product.id,
             variantId: variant.id,
             measurementId: m.measurementId,
-            value: String(m.value),
+            value: String(m.value).substring(0, 255),
           }));
 
           await ProductMeasurement.bulkCreate(variantMeasurementRows, {
