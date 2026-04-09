@@ -578,7 +578,7 @@ exports.getProductDetailsByIdAdmin = async (req, res) => {
             {
               model: VariantImage,
               as: "images",
-              attributes: ["id", "imageUrl", "isPrimary"],
+              attributes: ["id", "imageUrl"],
             },
             {
               model: ProductPrice,
