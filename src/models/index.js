@@ -40,8 +40,40 @@ const FAQ = require("./faq/faq.model");
 //Store
 const Store = require("./store/store.model");
 const StoreInventory = require("./products/StoreInventory.model");
+const ProductAttribute = require("./products/ProductAttribute.model");
+const ProductMeasurement = require("./products/ProductMeasurement.model");
+const MeasurementMaster = require("./measurements/MeasurementMaster.model");
 
 
+// ProductMeasurement → MeasurementMaster
+ProductMeasurement.belongsTo(MeasurementMaster, {
+  foreignKey: "measurementId",
+  as: "measurement",
+});
+
+MeasurementMaster.hasMany(ProductMeasurement, {
+  foreignKey: "measurementId",
+});
+
+
+// Product → Attributes
+Product.hasMany(ProductAttribute, {foreignKey: "productId", as: "attributes"});
+
+ProductAttribute.belongsTo(Product, {foreignKey: "productId", as: "product"});
+
+// Product → Measurements
+Product.hasMany(ProductMeasurement, {foreignKey: "productId", as: "measurements"});
+
+ProductMeasurement.belongsTo(Product, {foreignKey: "productId",as: "product",});
+// Variant → Attributes
+ProductVariant.hasMany(ProductAttribute, {foreignKey: "variantId",as: "attributes"});
+
+ProductAttribute.belongsTo(ProductVariant, {foreignKey: "variantId",as: "variant"});
+
+// Variant → Measurements
+ProductVariant.hasMany(ProductMeasurement, {foreignKey: "variantId",as: "measurements",});
+
+ProductMeasurement.belongsTo(ProductVariant, {foreignKey: "variantId", as: "variant"});
 
 // Store.hasMany(Product, {
 //   foreignKey: "storeId",
@@ -61,42 +93,18 @@ const StoreInventory = require("./products/StoreInventory.model");
 //   foreignKey: "storeId",
 //   as: "store",
 // });
-Store.hasMany(StoreInventory, {
-  foreignKey: "storeId",
-  as: "inventories",
-});
+Store.hasMany(StoreInventory, {foreignKey: "storeId", as: "inventories"});
 
-StoreInventory.belongsTo(Store, {
-  foreignKey: "storeId",
-  as: "store",
-});
-Product.hasMany(StoreInventory, {
-  foreignKey: "productId",
-  as: "storeInventory",
-});
+StoreInventory.belongsTo(Store, {foreignKey: "storeId", as: "store"});
+Product.hasMany(StoreInventory, {foreignKey: "productId", as: "storeInventory"});
 
-StoreInventory.belongsTo(Product, {
-  foreignKey: "productId",
-  as: "product",
-});
-ProductVariant.hasMany(StoreInventory, {
-  foreignKey: "variantId",
-  as: "storeInventory",
-});
+StoreInventory.belongsTo(Product, {foreignKey: "productId",as: "product",});
+ProductVariant.hasMany(StoreInventory, {foreignKey: "variantId", as: "storeInventory"});
 
-StoreInventory.belongsTo(ProductVariant, {
-  foreignKey: "variantId",
-  as: "variant",
-});
-VariantSize.hasMany(StoreInventory, {
-  foreignKey: "variantSizeId",
-  as: "storeInventory",
-});
+StoreInventory.belongsTo(ProductVariant, {foreignKey: "variantId", as: "variant"});
+VariantSize.hasMany(StoreInventory, {foreignKey: "variantSizeId", as: "storeInventory",});
 
-StoreInventory.belongsTo(VariantSize, {
-  foreignKey: "variantSizeId",
-  as: "size",
-});
+StoreInventory.belongsTo(VariantSize, {foreignKey: "variantSizeId", as: "size"});
 
 // SubCategory Relations
 Category.hasMany(SubCategory, {foreignKey: "categoryId",as: "subcategories"})
@@ -260,5 +268,7 @@ module.exports = {
   FeaturedCategory,
   FAQ,
   Store,
-  StoreInventory
+  StoreInventory,
+  ProductAttribute,
+  ProductMeasurement
 }
