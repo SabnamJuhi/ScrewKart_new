@@ -43,18 +43,17 @@ const StoreInventory = require("./products/StoreInventory.model");
 const ProductAttribute = require("./products/ProductAttribute.model");
 const ProductMeasurement = require("./products/ProductMeasurement.model");
 const MeasurementMaster = require("./measurements/MeasurementMaster.model");
+const VariantPricingSlab = require("./products/variantPricingSlab.model")
 
 
 // ProductMeasurement → MeasurementMaster
-ProductMeasurement.belongsTo(MeasurementMaster, {
-  foreignKey: "measurementId",
-  as: "measurement",
-});
+ProductMeasurement.belongsTo(MeasurementMaster, { foreignKey: "measurementId", as: "measurement",});
 
-MeasurementMaster.hasMany(ProductMeasurement, {
-  foreignKey: "measurementId",
-});
+MeasurementMaster.hasMany(ProductMeasurement, {foreignKey: "measurementId",});
 
+// 3. Variant Pricing Slabs (🔥 IMPORTANT FOR ADMIN)
+ProductVariant.hasMany(VariantPricingSlab, { foreignKey: "variantId", as: "pricingSlabs" });
+VariantPricingSlab.belongsTo(ProductVariant, { foreignKey: "variantId" });
 
 // Product → Attributes
 Product.hasMany(ProductAttribute, {foreignKey: "productId", as: "attributes"});
@@ -249,6 +248,7 @@ module.exports = {
   ProductCategory,
   Product,
   ProductPrice,
+  VariantPricingSlab,
   ProductRating,
   ProductReview,
   ProductSpec,
@@ -270,5 +270,6 @@ module.exports = {
   Store,
   StoreInventory,
   ProductAttribute,
-  ProductMeasurement
+  ProductMeasurement,
+  MeasurementMaster
 }
