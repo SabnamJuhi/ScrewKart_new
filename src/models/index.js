@@ -55,6 +55,7 @@ MeasurementMaster.hasMany(ProductMeasurement, {foreignKey: "measurementId",});
 ProductVariant.hasMany(VariantPricingSlab, { foreignKey: "variantId", as: "pricingSlabs" });
 VariantPricingSlab.belongsTo(ProductVariant, { foreignKey: "variantId" });
 
+
 // Product → Attributes
 Product.hasMany(ProductAttribute, {foreignKey: "productId", as: "attributes"});
 

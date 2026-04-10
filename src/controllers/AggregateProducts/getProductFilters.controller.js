@@ -3,107 +3,195 @@
 
 // const Product = require("../../models/products/product.model");
 // const ProductPrice = require("../../models/products/price.model");
-// const ProductSpec = require("../../models/products/productSpec.model");
 // const ProductVariant = require("../../models/productVariants/productVariant.model");
-// const VariantSize = require("../../models/productVariants/variantSize.model");
+// const ProductAttribute = require("../../models/products/ProductAttribute.model");
+// const ProductMeasurement = require("../../models/products/ProductMeasurement.model");
+// const MeasurementMaster = require("../../models/measurements/MeasurementMaster.model");
 
-// const { Category, SubCategory, ProductCategory } = require("../../models");
+// const { Category, SubCategory, ProductCategory, StoreInventory } = require("../../models");
 
 // exports.getProductFilters = async (req, res) => {
 //   try {
-//     /* ---------------- BRANDS ---------------- */
-//     const brandsRaw = await Product.findAll({
-//       attributes: ["brandName"],
+//     const { storeId } = req.query;
+
+//     if (!storeId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "storeId is required",
+//       });
+//     }
+
+//     /* =========================================================
+//        1. GET ACTIVE VARIANTS FOR STORE (CORE FILTER BASE)
+//     ========================================================= */
+//     const storeInventory = await StoreInventory.findAll({
 //       where: {
-//         brandName: { [Op.ne]: null },
-//         isActive: true
+//         storeId,
+//         stock: { [Op.gt]: 0 },
 //       },
-//       group: ["brandName"],
+//       attributes: ["variantId"],
 //       raw: true,
 //     });
 
-//     const brands = brandsRaw.map((b) => b.brandName).filter(Boolean).sort();
+//     const availableVariantIds = storeInventory.map((i) => i.variantId);
 
-//     /* ---------------- CATEGORY TREE ---------------- */
+//     if (!availableVariantIds.length) {
+//       return res.json({
+//         success: true,
+//         filters: {},
+//       });
+//     }
+
+//     /* =========================================================
+//        2. GET PRODUCTS LINKED TO THESE VARIANTS
+//     ========================================================= */
+//     const variants = await ProductVariant.findAll({
+//       where: {
+//         id: { [Op.in]: availableVariantIds },
+//         isActive: true,
+//       },
+//       attributes: ["id", "productId", "unit", "packingType", "stockStatus"],
+//       raw: true,
+//     });
+
+//     const productIds = [...new Set(variants.map((v) => v.productId))];
+
+//     /* =========================================================
+//        3. BRANDS
+//     ========================================================= */
+//     const brandsRaw = await Product.findAll({
+//       attributes: [
+//         [sequelize.fn("DISTINCT", sequelize.col("brandName")), "brandName"],
+//       ],
+//       where: {
+//         id: { [Op.in]: productIds },
+//         isActive: true,
+//       },
+//       raw: true,
+//     });
+
+//     const brands = brandsRaw
+//       .map((b) => b.brandName)
+//       .filter(Boolean)
+//       .sort();
+
+//     /* =========================================================
+//        4. CATEGORY TREE
+//     ========================================================= */
 //     const categories = await Category.findAll({
-//       attributes: ["id", "name", "isActive"],
+//       attributes: ["id", "name"],
 //       where: { isActive: true },
 //       include: [
 //         {
 //           model: SubCategory,
 //           as: "subcategories",
-//           attributes: ["id", "name", "isActive"],
-//           where: { isActive: true },
-//           required: false,
+//           attributes: ["id", "name"],
 //           include: [
 //             {
 //               model: ProductCategory,
 //               as: "productCategories",
-//               attributes: ["id", "name", "isActive"],
-//               where: { isActive: true },
-//               required: false,
+//               attributes: ["id", "name"],
 //             },
 //           ],
 //         },
 //       ],
 //     });
 
-//     /* ---------------- SIZES WITH DIMENSIONS ---------------- */
-//     const sizesRaw = await VariantSize.findAll({
-//       attributes: ["diameter", "length"],
+//     /* =========================================================
+//        5. ATTRIBUTES (PRODUCT + VARIANT LEVEL)
+//     ========================================================= */
+//     const attributesRaw = await ProductAttribute.findAll({
 //       where: {
-//         diameter: { [Op.ne]: null },
-//         length: { [Op.ne]: null }
+//         [Op.or]: [
+//           { productId: { [Op.in]: productIds } },
+//           { variantId: { [Op.in]: availableVariantIds } },
+//         ],
 //       },
-//       group: ["diameter", "length"],
+//       attributes: ["attributeKey", "attributeValue"],
 //       raw: true,
 //     });
 
-//     const sizes = sizesRaw
-//       .filter((s) => s.diameter && s.length)
-//       .map((s) => ({
-//         diameter: s.diameter,
-//         length: s.length,
-//         display: `M${s.diameter} × ${s.length}`,
-//         value: `${s.diameter}-${s.length}`,
-//       }))
-//       .sort((a, b) => a.diameter - b.diameter || a.length - b.length);
+//     const attributes = {};
 
-//     /* ---------------- SPECS ---------------- */
-//     const specsRaw = await ProductSpec.findAll({
-//       attributes: ["specKey", "specValue"],
+//     attributesRaw.forEach((attr) => {
+//       if (!attributes[attr.attributeKey]) {
+//         attributes[attr.attributeKey] = new Set();
+//       }
+
+//       attr.attributeValue
+//         .split(",")
+//         .map((v) => v.trim())
+//         .filter(Boolean)
+//         .forEach((v) => attributes[attr.attributeKey].add(v));
+//     });
+
+//     Object.keys(attributes).forEach((key) => {
+//       attributes[key] = Array.from(attributes[key]).sort();
+//     });
+
+//     /* =========================================================
+//        6. MEASUREMENTS
+//     ========================================================= */
+//     const measurementsRaw = await ProductMeasurement.findAll({
 //       where: {
-//         specKey: { [Op.ne]: null },
-//         specValue: { [Op.ne]: null }
+//         [Op.or]: [
+//           { productId: { [Op.in]: productIds } },
+//           { variantId: { [Op.in]: availableVariantIds } },
+//         ],
 //       },
+//       attributes: ["value"],
+//       include: [
+//         {
+//           model: MeasurementMaster,
+//           as: "measurement",
+//           attributes: ["id", "name", "unit"],
+//         },
+//       ],
 //       raw: true,
+//       nest: true,
 //     });
 
-//     const specs = {};
+//     const measurementsMap = {};
 
-//     specsRaw.forEach((s) => {
-//       if (!specs[s.specKey]) specs[s.specKey] = new Set();
+//     measurementsRaw.forEach((m) => {
+//       const master = m.measurement;
+//       if (!master) return;
 
-//       // Split by comma and trim each value
-//       const values = s.specValue.split(",").map(v => v.trim()).filter(Boolean);
-//       values.forEach((v) => {
-//         specs[s.specKey].add(v);
-//       });
+//       if (!measurementsMap[master.id]) {
+//         measurementsMap[master.id] = {
+//           name: master.name,
+//           id: master.id,
+//           unit: master.unit,
+//           values: new Set(),
+//         };
+//       }
+
+//       measurementsMap[master.id].values.add(m.value);
 //     });
 
-//     // Convert Sets to Arrays and sort
-//     Object.keys(specs).forEach((k) => {
-//       specs[k] = Array.from(specs[k]).sort();
-//     });
+//     const measurements = Object.values(measurementsMap).map((m) => ({
+//       name: m.name,
+//       id: m.id,
+//       unit: m.unit,
+//       options: Array.from(m.values).sort((a, b) => {
+//         const numA = parseFloat(a);
+//         const numB = parseFloat(b);
 
-//     /* ---------------- PRICE RANGE ---------------- */
+//         if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+//         return a.localeCompare(b);
+//       }),
+//     }));
+
+//     /* =========================================================
+//        7. PRICE RANGE (ONLY AVAILABLE VARIANTS)
+//     ========================================================= */
 //     const priceRaw = await ProductPrice.findOne({
 //       attributes: [
 //         [sequelize.fn("MIN", sequelize.col("sellingPrice")), "min"],
 //         [sequelize.fn("MAX", sequelize.col("sellingPrice")), "max"],
 //       ],
 //       where: {
-//         sellingPrice: { [Op.gt]: 0 }
+//         variantId: { [Op.in]: availableVariantIds },
 //       },
 //       raw: true,
 //     });
@@ -113,141 +201,45 @@
 //       max: Math.ceil(Number(priceRaw?.max || 0)),
 //     };
 
-//     /* ---------------- AVAILABILITY (STOCK STATUS) ---------------- */
-//     const availabilityRaw = await ProductVariant.findAll({
-//       attributes: ["stockStatus"],
-//       where: {
-//         stockStatus: { [Op.ne]: null }
-//       },
-//       group: ["stockStatus"],
-//       raw: true,
-//     });
-
-//     const availability = availabilityRaw
-//       .map((a) => a.stockStatus)
-//       .filter(Boolean);
-
-//     /* ---------------- VARIANT ATTRIBUTES ---------------- */
-    
-//     // Get unique grades
-//     const gradesRaw = await ProductVariant.findAll({
-//       attributes: ["grade"],
-//       where: {
-//         grade: { [Op.ne]: null }
-//       },
-//       group: ["grade"],
-//       raw: true,
-//     });
-
-//     const grades = gradesRaw
-//       .map((g) => Number(g.grade))
-//       .filter(Boolean)
-//       .sort((a, b) => a - b);
-
-//     // Get unique finishes
-//     const finishesRaw = await ProductVariant.findAll({
-//       attributes: ["finish"],
-//       where: {
-//         finish: { [Op.ne]: null }
-//       },
-//       group: ["finish"],
-//       raw: true,
-//     });
-
-//     const finishes = finishesRaw
-//       .map((f) => f.finish)
+//     /* =========================================================
+//        8. VARIANT FILTERS
+//     ========================================================= */
+//     const units = [...new Set(variants.map((v) => v.unit))]
 //       .filter(Boolean)
 //       .sort();
 
-//     // Get unique materials
-//     const materialsRaw = await ProductVariant.findAll({
-//       attributes: ["material"],
-//       where: {
-//         material: { [Op.ne]: null }
-//       },
-//       group: ["material"],
-//       raw: true,
-//     });
-
-//     const materials = materialsRaw
-//       .map((m) => m.material)
+//     const packingTypes = [...new Set(variants.map((v) => v.packingType))]
 //       .filter(Boolean)
 //       .sort();
 
-//     // Get unique thread types
-//     const threadTypesRaw = await ProductVariant.findAll({
-//       attributes: ["threadType"],
-//       where: {
-//         threadType: { [Op.ne]: null }
-//       },
-//       group: ["threadType"],
-//       raw: true,
-//     });
-
-//     const threadTypes = threadTypesRaw
-//       .map((t) => t.threadType)
+//     const stockStatus = [...new Set(variants.map((v) => v.stockStatus))]
 //       .filter(Boolean)
 //       .sort();
 
-//     // Get pack quantities
-//     const packQuantitiesRaw = await ProductVariant.findAll({
-//       attributes: ["packQuantity"],
-//       where: {
-//         packQuantity: { [Op.ne]: null }
-//       },
-//       group: ["packQuantity"],
-//       raw: true,
-//     });
-
-//     const packQuantities = packQuantitiesRaw
-//       .map((p) => p.packQuantity)
-//       .filter(Boolean)
-//       .sort((a, b) => a - b);
-
-//     /* ---------------- FILTER SUMMARY ---------------- */
-//     const filterSummary = {
-//       totalBrands: brands.length,
-//       totalCategories: categories.length,
-//       totalSizes: sizes.length,
-//       totalSpecs: Object.keys(specs).length,
-//       totalGrades: grades.length,
-//       totalFinishes: finishes.length,
-//       totalMaterials: materials.length,
-//       totalThreadTypes: threadTypes.length,
-//       totalPackQuantities: packQuantities.length,
-//     };
-
-//     /* ---------------- RESPONSE ---------------- */
+//     /* =========================================================
+//        FINAL RESPONSE
+//     ========================================================= */
 //     return res.json({
 //       success: true,
 //       filters: {
 //         brands,
 //         categories,
-//         sizes,
-//         specs,
 //         priceRange,
-//         availability,
-//         // Variant attributes
-//         variantAttributes: {
-//           grades,
-//           finishes,
-//           materials,
-//           threadTypes,
-//           packQuantities,
-//         },
-//         summary: filterSummary,
+//         attributes,
+//         measurements,
+//         units,
+//         packingTypes,
+//         stockStatus,
 //       },
 //     });
 //   } catch (error) {
-//     console.error("FILTER METADATA ERROR:", error);
-    
+//     console.error("GET PRODUCT FILTERS ERROR:", error);
 //     return res.status(500).json({
 //       success: false,
 //       message: error.message,
 //     });
 //   }
 // };
-
 
 
 const { Op } = require("sequelize");
@@ -264,120 +256,371 @@ const { Category, SubCategory, ProductCategory } = require("../../models");
 
 exports.getProductFilters = async (req, res) => {
   try {
-    /* ---------------- 1. BRANDS ---------------- */
-    const brandsRaw = await Product.findAll({
-      attributes: [[sequelize.fn("DISTINCT", sequelize.col("brandName")), "brandName"]],
-      where: { brandName: { [Op.ne]: null }, isActive: true },
+    const { stockStatus } = req.query;
+
+    /* =========================================================
+       1. GET ACTIVE VARIANTS (BASED ON TOTAL STOCK)
+    ========================================================= */
+    const variantWhere = {
+      isActive: true,
+    };
+
+    if (stockStatus === "In Stock") {
+      variantWhere.totalStock = { [Op.gt]: 0 };
+    } else if (stockStatus === "Out of Stock") {
+      variantWhere.totalStock = 0;
+    }
+
+    const variants = await ProductVariant.findAll({
+      where: variantWhere,
+      attributes: ["id", "productId", "unit", "packingType", "stockStatus", "totalStock", "packQuantity", "moq"],
       raw: true,
     });
-    const brands = brandsRaw.map((b) => b.brandName).filter(Boolean).sort();
 
-    /* ---------------- 2. CATEGORY TREE ---------------- */
-    const categories = await Category.findAll({
-      attributes: ["id", "name"],
-      where: { isActive: true },
-      include: [
-        {
-          model: SubCategory,
-          as: "subcategories",
-          attributes: ["id", "name"],
-          include: [{ model: ProductCategory, as: "productCategories", attributes: ["id", "name"] }],
+    if (!variants.length) {
+      return res.json({
+        success: true,
+        filters: {
+          brands: [],
+          categories: [],
+          priceRange: { min: 0, max: 0 },
+          attributes: {},
+          measurements: [],
+          units: [],
+          packingTypes: [],
+          packQuantities: [],
+          moqRange: { min: 0, max: 0 },
+          stockStatus: [],
+          availableCategoryIds: [],
+          availableSubCategoryIds: [],
+          availableProductCategoryIds: [],
+          totalProducts: 0,
+          totalVariants: 0,
         },
+      });
+    }
+
+    const availableVariantIds = variants.map((v) => v.id);
+    const productIds = [...new Set(variants.map((v) => v.productId))];
+
+    /* =========================================================
+       2. BRANDS
+    ========================================================= */
+    const brandsRaw = await Product.findAll({
+      attributes: [
+        [sequelize.fn("DISTINCT", sequelize.col("brandName")), "brandName"],
       ],
+      where: {
+        id: { [Op.in]: productIds },
+        isActive: true,
+      },
+      raw: true,
     });
 
-    /* ---------------- 3. DYNAMIC ATTRIBUTES (Global & Variant) ---------------- */
+    const brands = brandsRaw
+      .map((b) => b.brandName)
+      .filter(Boolean)
+      .sort();
+
+    /* =========================================================
+       3. CATEGORY TREE (WITH CIRCULAR REFERENCE FIX)
+    ========================================================= */
+    const categoriesRaw = await Category.findAll({
+      attributes: ["id", "name"],
+      where: { isActive: true },
+      raw: true,
+    });
+
+    const subcategoriesRaw = await SubCategory.findAll({
+      attributes: ["id", "name", "categoryId"],
+      where: { isActive: true },
+      raw: true,
+    });
+
+    const productCategoriesRaw = await ProductCategory.findAll({
+      attributes: ["id", "name", "subCategoryId"],
+      where: { isActive: true },
+      raw: true,
+    });
+
+    const productsWithCategories = await Product.findAll({
+      where: {
+        id: { [Op.in]: productIds },
+        isActive: true,
+      },
+      attributes: ["categoryId", "subCategoryId", "productCategoryId"],
+      raw: true,
+    });
+
+    const availableCategoryIds = [...new Set(productsWithCategories.map(p => p.categoryId).filter(Boolean))];
+    const availableSubCategoryIds = [...new Set(productsWithCategories.map(p => p.subCategoryId).filter(Boolean))];
+    const availableProductCategoryIds = [...new Set(productsWithCategories.map(p => p.productCategoryId).filter(Boolean))];
+
+    // Build category tree manually
+    const categories = categoriesRaw
+      .filter(cat => availableCategoryIds.includes(cat.id))
+      .map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        subcategories: subcategoriesRaw
+          .filter(sub => sub.categoryId === cat.id && availableSubCategoryIds.includes(sub.id))
+          .map(sub => ({
+            id: sub.id,
+            name: sub.name,
+            productCategories: productCategoriesRaw
+              .filter(pc => pc.subCategoryId === sub.id && availableProductCategoryIds.includes(pc.id))
+              .map(pc => ({
+                id: pc.id,
+                name: pc.name,
+              }))
+          }))
+      }));
+
+    /* =========================================================
+       4. ATTRIBUTES
+    ========================================================= */
     const attributesRaw = await ProductAttribute.findAll({
+      where: {
+        [Op.or]: [
+          { productId: { [Op.in]: productIds } },
+          { variantId: { [Op.in]: availableVariantIds } },
+        ],
+      },
       attributes: ["attributeKey", "attributeValue"],
       raw: true,
     });
 
     const attributes = {};
+
     attributesRaw.forEach((attr) => {
-      if (!attributes[attr.attributeKey]) attributes[attr.attributeKey] = new Set();
-      // Split by comma if multiple values are stored, otherwise add direct
-      attr.attributeValue.split(",").forEach(v => attributes[attr.attributeKey].add(v.trim()));
-    });
-    
-    // Convert Sets to sorted Arrays
-    Object.keys(attributes).forEach(key => {
-      attributes[key] = Array.from(attributes[key]).filter(Boolean).sort();
+      if (!attributes[attr.attributeKey]) {
+        attributes[attr.attributeKey] = new Set();
+      }
+
+      attr.attributeValue
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .forEach((v) => attributes[attr.attributeKey].add(v));
     });
 
-    /* ---------------- 4. DYNAMIC MEASUREMENTS ---------------- */
+    Object.keys(attributes).forEach((key) => {
+      attributes[key] = Array.from(attributes[key]).sort();
+    });
+
+    /* =========================================================
+       5. MEASUREMENTS
+    ========================================================= */
     const measurementsRaw = await ProductMeasurement.findAll({
+      where: {
+        [Op.or]: [
+          { productId: { [Op.in]: productIds } },
+          { variantId: { [Op.in]: availableVariantIds } },
+        ],
+      },
       attributes: ["value"],
-      include: [{ 
-        model: MeasurementMaster, 
-        as: "measurement", 
-        attributes: ["id", "name", "unit"] 
-      }],
+      include: [
+        {
+          model: MeasurementMaster,
+          as: "measurement",
+          attributes: ["id", "name", "unit"],
+        },
+      ],
       raw: true,
-      nest: true // Keeps the included model nested for easy access
+      nest: true,
     });
 
-    const measurements = {};
+    const measurementsMap = {};
+
     measurementsRaw.forEach((m) => {
       const master = m.measurement;
       if (!master) return;
-      
-      const key = master.name; // e.g., "Length"
-      if (!measurements[key]) {
-        measurements[key] = {
+
+      if (!measurementsMap[master.id]) {
+        measurementsMap[master.id] = {
+          name: master.name,
           id: master.id,
           unit: master.unit,
-          values: new Set()
+          values: new Set(),
         };
       }
-      measurements[key].values.add(m.value);
+
+      measurementsMap[master.id].values.add(m.value);
     });
 
-    // Final formatting for measurements
-    const formattedMeasurements = Object.keys(measurements).map(key => ({
-      name: key,
-      id: measurements[key].id,
-      unit: measurements[key].unit,
-      options: Array.from(measurements[key].values).sort((a, b) => parseFloat(a) - parseFloat(b))
+    const measurements = Object.values(measurementsMap).map((m) => ({
+      name: m.name,
+      id: m.id,
+      unit: m.unit,
+      options: Array.from(m.values).sort((a, b) => {
+        const numA = parseFloat(a);
+        const numB = parseFloat(b);
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+        return a.localeCompare(b);
+      }),
     }));
 
-    /* ---------------- 5. PRICE RANGE ---------------- */
+    /* =========================================================
+       6. PRICE RANGE
+    ========================================================= */
     const priceRaw = await ProductPrice.findOne({
       attributes: [
         [sequelize.fn("MIN", sequelize.col("sellingPrice")), "min"],
         [sequelize.fn("MAX", sequelize.col("sellingPrice")), "max"],
       ],
+      where: {
+        variantId: { [Op.in]: availableVariantIds },
+      },
       raw: true,
     });
 
-    /* ---------------- 6. VARIANT SPECIFICS ---------------- */
-    const variantMeta = await ProductVariant.findAll({
-      attributes: [
-        [sequelize.fn("DISTINCT", sequelize.col("unit")), "unit"],
-        [sequelize.fn("DISTINCT", sequelize.col("packingType")), "packingType"],
-        [sequelize.fn("DISTINCT", sequelize.col("stockStatus")), "stockStatus"],
-      ],
+    const priceRange = {
+      min: Math.floor(Number(priceRaw?.min || 0)),
+      max: Math.ceil(Number(priceRaw?.max || 0)),
+    };
+
+    /* =========================================================
+       7. VARIANT FILTERS
+    ========================================================= */
+    const units = [...new Set(variants.map((v) => v.unit))]
+      .filter(Boolean)
+      .sort();
+
+    const packingTypes = [...new Set(variants.map((v) => v.packingType))]
+      .filter(Boolean)
+      .sort();
+
+    const packQuantities = [...new Set(variants.map((v) => v.packQuantity))]
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+
+    const moqValues = variants.map(v => v.moq).filter(Boolean);
+    const moqRange = {
+      min: Math.min(...moqValues) || 0,
+      max: Math.max(...moqValues) || 0,
+    };
+
+    const stockStatusOptions = [...new Set(variants.map((v) => v.stockStatus))]
+      .filter(Boolean)
+      .sort();
+
+    /* =========================================================
+       8. IN-STOCK COUNT (For filtering by availability)
+    ========================================================= */
+    const inStockCount = variants.filter(v => v.totalStock > 0).length;
+    const outOfStockCount = variants.filter(v => v.totalStock === 0).length;
+
+    /* =========================================================
+       9. CATEGORY COUNTS
+    ========================================================= */
+    const categoryCounts = {};
+    productsWithCategories.forEach(product => {
+      if (product.categoryId) {
+        categoryCounts[product.categoryId] = (categoryCounts[product.categoryId] || 0) + 1;
+      }
+    });
+
+    /* =========================================================
+       10. PRICE DISTRIBUTION (For price slider)
+    ========================================================= */
+    const allPrices = await ProductPrice.findAll({
+      attributes: ["sellingPrice"],
+      where: {
+        variantId: { [Op.in]: availableVariantIds },
+      },
       raw: true,
     });
 
-    /* ---------------- RESPONSE ---------------- */
+    const prices = allPrices.map(p => p.sellingPrice).sort((a, b) => a - b);
+    
+    const priceDistribution = {
+      min: priceRange.min,
+      max: priceRange.max,
+      average: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) || 0,
+      median: prices[Math.floor(prices.length / 2)] || 0,
+      count: prices.length,
+    };
+
+    /* =========================================================
+       11. MEASUREMENT VALUE RANGES (For numeric measurements)
+    ========================================================= */
+    const measurementRanges = {};
+    measurements.forEach(measurement => {
+      const numericValues = measurement.options
+        .map(v => parseFloat(v))
+        .filter(v => !isNaN(v));
+      
+      if (numericValues.length > 0) {
+        measurementRanges[measurement.name] = {
+          min: Math.min(...numericValues),
+          max: Math.max(...numericValues),
+          unit: measurement.unit,
+        };
+      }
+    });
+
+    /* =========================================================
+       FINAL RESPONSE
+    ========================================================= */
     return res.json({
       success: true,
       filters: {
+        // Product level filters
         brands,
         categories,
-        priceRange: {
-          min: Math.floor(Number(priceRaw?.min || 0)),
-          max: Math.ceil(Number(priceRaw?.max || 0)),
+        availableCategoryIds,
+        availableSubCategoryIds,
+        availableProductCategoryIds,
+        categoryCounts,
+        
+        // Price filters
+        priceRange,
+        priceDistribution,
+        
+        // Dynamic filters
+        attributes,
+        measurements,
+        measurementRanges,
+        
+        // Variant level filters
+        units,
+        packingTypes,
+        packQuantities,
+        moqRange,
+        stockStatus: stockStatusOptions,
+        
+        // Stock availability
+        stockAvailability: {
+          inStock: inStockCount,
+          outOfStock: outOfStockCount,
+          total: variants.length,
         },
-        attributes, // Dynamic keys like "Material", "Finish", etc.
-        measurements: formattedMeasurements, // Dynamic keys like "Diameter", "Length"
-        stockStatus: Array.from(new Set(variantMeta.map(v => v.stockStatus))).filter(Boolean),
-        packingTypes: Array.from(new Set(variantMeta.map(v => v.packingType))).filter(Boolean),
-        units: Array.from(new Set(variantMeta.map(v => v.unit))).filter(Boolean)
+        
+        // Additional metadata
+        totalProducts: productIds.length,
+        totalVariants: availableVariantIds.length,
+        
+        // Query tips (to help frontend)
+        filterExamples: {
+          byCategory: "categoryId=1",
+          byBrand: "brandName=Unbrako",
+          byPrice: "minPrice=100&maxPrice=500",
+          byAttribute: "attributeKey=material&attributeValue=SS304",
+          byMeasurement: "measurementName=Diameter&measurementValue=20",
+          byPackQuantity: "packQuantity=100",
+          byUnit: "unit=BOX",
+          byMOQ: "moq=10",
+          byStockStatus: "stockStatus=In Stock",
+          bySearch: "search=bolt",
+          combined: "categoryId=1&brandName=Unbrako&minPrice=100&maxPrice=500&attributeKey=material&attributeValue=SS304&measurementName=Diameter&measurementValue=20&stockStatus=In Stock"
+        }
       },
     });
   } catch (error) {
-    console.error("DYNAMIC FILTER ERROR:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("GET PRODUCT FILTERS ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

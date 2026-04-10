@@ -675,26 +675,45 @@ exports.getStoreInventory = async (req, res) => {
 
 
 
-/* ================= GET PRODUCT STOCK ================= */
+const Product = require("../../models/products/product.model");
+
 exports.getProductStock = async (req, res) => {
   try {
     const { storeId, productId } = req.params;
 
-    const inventory = await StoreInventory.findAll({
-      where: { storeId, productId },
+    const variants = await ProductVariant.findAll({
+      where: { productId },
+
       include: [
         {
-          model: ProductVariant,
-          as: "variant",
-          attributes: ["id", "variantCode", "totalStock", "stockStatus"],
+          model: StoreInventory,
+          as: "storeInventory",
+          required: false, // 🔥 LEFT JOIN (IMPORTANT)
+          where: { storeId },
+          attributes: ["stock", "isAvailable"],
         },
       ],
     });
 
+    // 🔥 Format response
+    const formatted = variants.map((variant) => {
+      const inventory = variant.inventory?.[0]; // may be undefined
+
+      return {
+        variantId: variant.id,
+        variantCode: variant.variantCode,
+        totalStock: variant.totalStock || 0,
+        stockStatus: variant.stockStatus || "Out of Stock",
+
+        stock: inventory ? inventory.stock : 0,   // 🔥 default 0
+        isAvailable: inventory ? inventory.isAvailable : false,
+      };
+    });
+
     res.json({
       success: true,
-      count: inventory.length,
-      data: inventory,
+      count: formatted.length,
+      data: formatted,
     });
 
   } catch (error) {
