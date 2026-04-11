@@ -57,11 +57,11 @@ const CartItem = sequelize.define("CartItem", {
     allowNull: false,
   },
 
-  sizeId: {
-    // ✅ FK instead of selectedSize
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
+  // sizeId: {
+  //   // ✅ FK instead of selectedSize
+  //   type: DataTypes.INTEGER,
+  //   allowNull: false,
+  // },
   storeId: {
     type: DataTypes.INTEGER,
     allowNull: false,

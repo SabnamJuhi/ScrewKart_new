@@ -96,12 +96,12 @@ const priceService = require("../../services/price.service");
 
 exports.calculateProductPrice = async (req, res) => {
   try {
-    const { variantId, variantSizeId, quantity, storeId } = req.body;
+    const { variantId, quantity, storeId } = req.body;
 
-    if (!variantId || !variantSizeId || !quantity || !storeId) {
+    if (!variantId || !quantity || !storeId) {
       return res.status(400).json({
         success: false,
-        message: "variantId, variantSizeId, quantity, storeId required",
+        message: "variantId, quantity, storeId required",
       });
     }
 
@@ -109,7 +109,6 @@ exports.calculateProductPrice = async (req, res) => {
     const inventory = await StoreInventory.findOne({
       where: {
         variantId,
-        variantSizeId,
         storeId,
       },
     });
@@ -174,7 +173,6 @@ exports.calculateProductPrice = async (req, res) => {
       success: true,
       data: {
         variantId,
-        variantSizeId,
         quantity,
 
         stock,
