@@ -1015,24 +1015,77 @@ exports.mergeGuestCart = async (req, res) => {
 
 exports.decreaseQuantity = async (req, res) => {
   try {
-    const { productId, variantId } = req.body;
+    const { productId, variantId, storeId } = req.body;
     const userId = req.user.id;
 
-    const item = await CartItem.findOne({
-      where: { userId, productId, variantId, },
-    });
-
-    if (!item) return res.status(404).json({ message: "Item not found" });
-
-    if (item.quantity > 1) {
-      await item.decrement("quantity", { by: 1 });
-    } else {
-      await item.destroy();
+    if (!productId || !variantId || !storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "productId, variantId and storeId are required",
+      });
     }
 
-    res.json({ success: true, message: "Quantity decreased" });
+    // 🔍 Find cart item
+    const item = await CartItem.findOne({
+      where: { userId, productId, variantId, storeId },
+    });
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found",
+      });
+    }
+
+    // 🔥 Get latest stock from store inventory
+    const inventory = await StoreInventory.findOne({
+      where: {
+        storeId,
+        productId,
+        variantId,
+      },
+    });
+
+    const currentStock = inventory?.stock || 0;
+
+    // ❌ If already 1 → remove item
+    if (item.quantity <= 1) {
+      await item.destroy();
+
+      return res.json({
+        success: true,
+        message: "Item removed from cart",
+        data: {
+          cartItemId: item.id,
+          quantity: 0,
+          stockLeft: currentStock,
+          action: "removed",
+        },
+      });
+    }
+
+    // 🔽 Decrease quantity
+    await item.decrement("quantity", { by: 1 });
+
+    const updatedQty = item.quantity - 1;
+
+    return res.json({
+      success: true,
+      message: "Quantity decreased",
+      data: {
+        cartItemId: item.id,
+        quantity: updatedQty,
+        stockLeft: currentStock - updatedQty,
+        action: "decreased",
+      },
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Decrease Cart Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
