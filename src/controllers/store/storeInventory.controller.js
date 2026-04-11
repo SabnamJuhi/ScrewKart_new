@@ -489,6 +489,7 @@ const sequelize = require("../../config/db");
 const StoreInventory = require("../../models/products/StoreInventory.model");
 const ProductVariant = require("../../models/productVariants/productVariant.model");
 
+
 /* ================= CREATE / BULK UPSERT INVENTORY ================= */
 exports.createStoreInventory = async (req, res) => {
   const t = await sequelize.transaction();
@@ -675,7 +676,7 @@ exports.getStoreInventory = async (req, res) => {
 
 
 
-const Product = require("../../models/products/product.model");
+
 
 exports.getProductStock = async (req, res) => {
   try {
@@ -683,47 +684,55 @@ exports.getProductStock = async (req, res) => {
 
     const variants = await ProductVariant.findAll({
       where: { productId },
-
       include: [
         {
           model: StoreInventory,
           as: "storeInventory",
-          required: false, // 🔥 LEFT JOIN (IMPORTANT)
-          where: { storeId },
-          attributes: ["stock", "isAvailable"],
+          required: false,
+          attributes: ["stock", "storeId"],
         },
       ],
     });
 
-    // 🔥 Format response
     const formatted = variants.map((variant) => {
-      const inventory = variant.inventory?.[0]; // may be undefined
+      const inventories = variant.storeInventory || [];
+
+      // 🔥 store-specific stock
+      const storeInventory = inventories.find(
+        (inv) => String(inv.storeId) === String(storeId)
+      );
+
+      // 🔥 total stock across all stores
+      const totalStock = inventories.reduce(
+        (sum, inv) => sum + (inv.stock || 0),
+        0
+      );
 
       return {
         variantId: variant.id,
         variantCode: variant.variantCode,
-        totalStock: variant.totalStock || 0,
-        stockStatus: variant.stockStatus || "Out of Stock",
 
-        stock: inventory ? inventory.stock : 0,   // 🔥 default 0
-        isAvailable: inventory ? inventory.isAvailable : false,
+        totalStock, // ✅ sum of all stores
+        stockStatus: totalStock > 0 ? "In Stock" : "Out of Stock",
+
+        stock: storeInventory ? storeInventory.stock : 0, // ✅ store-specific
+        isAvailable: storeInventory ? storeInventory.stock > 0 : false,
       };
     });
 
-    res.json({
+    return res.json({
       success: true,
       count: formatted.length,
       data: formatted,
     });
 
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-
 
 
 /* ================= GET VARIANT STOCK ================= */
