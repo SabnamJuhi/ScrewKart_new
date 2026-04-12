@@ -620,12 +620,196 @@ const {
   VariantImage,
   VariantSize,
   Store,
+  ProductAttribute,
+  ProductMeasurement,
+  MeasurementMaster,
 } = require("../../models");
 const { StoreInventory } = require("../../models");
 const { getDeliveryCharge } = require("../../utils/deliveryCharges");
 const { getDistanceKm } = require("../../utils/distance");
 const checkCartStoreConflict = require("../../utils/checkCartStoreConflict");
 const priceService = require("../../services/price.service");
+
+
+// exports.getCart = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { latitude, longitude } = req.query;
+
+//     if (!latitude || !longitude) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "User location required",
+//       });
+//     }
+
+//     const cartItems = await CartItem.findAll({
+//       where: { userId },
+//       include: [
+//         { model: Product, as: "product" },
+//         {
+//           model: ProductVariant,
+//           as: "variant",
+//           include: [
+//             { model: VariantImage, as: "images", limit: 1 },
+//             { model: ProductPrice, as: "price" },
+//           ],
+//         },
+//       ],
+//       order: [["createdAt", "DESC"]],
+//     });
+
+//     if (!cartItems.length) {
+//       return res.json({
+//         success: true,
+//         data: [],
+//         summary: {
+//           itemsCount: 0,
+//           totalQuantity: 0,
+//           subTotal: 0,
+//           tax: { amount: 0 },
+//           shippingFee: 0,
+//           grandTotal: 0,
+//           currency: "INR",
+//           canCheckout: false,
+//         },
+//       });
+//     }
+
+//     const storeId = cartItems[0].storeId;
+
+//     const store = await Store.findByPk(storeId);
+
+//     const distanceKm = getDistanceKm(
+//       Number(latitude),
+//       Number(longitude),
+//       Number(store.latitude),
+//       Number(store.longitude)
+//     );
+
+//     /* 🔥 INVENTORY */
+//     const inventoryList = await StoreInventory.findAll({
+//       where: { storeId },
+//     });
+
+//     const inventoryMap = {};
+//     inventoryList.forEach((inv) => {
+//       inventoryMap[inv.variantId] = inv.stock;
+//     });
+
+//     let subTotal = 0;
+//     let taxAmount = 0;
+//     let totalQuantity = 0;
+
+//     const items = [];
+
+//     for (const item of cartItems) {
+//       const currentStock = inventoryMap[item.variantId] || 0;
+
+//       const isAvailable = currentStock > 0;
+//       const validQty = isAvailable
+//         ? Math.min(item.quantity, currentStock)
+//         : 0;
+
+//       /* 🔥 DYNAMIC PRICE */
+//       const priceResult = await priceService.getFinalPrice(
+//         item.variantId,
+//         validQty || 1
+//       );
+
+//       const basePrice = Number(priceResult.price);
+//       const gstRate = Number(item.product?.gstRate) || 0;
+
+//       const gstPerUnit = Math.round((basePrice * gstRate) / 100);
+//       const finalPerUnit = basePrice + gstPerUnit;
+
+//       const baseTotal = basePrice * validQty;
+//       const gstTotal = gstPerUnit * validQty;
+//       const finalTotal = finalPerUnit * validQty;
+
+//       if (isAvailable) {
+//         subTotal += baseTotal;
+//         taxAmount += gstTotal;
+//         totalQuantity += validQty;
+//       }
+
+//       items.push({
+//         cartId: item.id,
+//         productId: item.productId,
+//         variantId: item.variantId,
+//         storeId: item.storeId,
+
+//         title: item.product?.title,
+//         image: item.variant?.images?.[0]?.imageUrl || null,
+
+//         variant: {
+//           variantCode: item.variant?.variantCode,
+//           stock: currentStock,
+//           status: isAvailable ? "In Stock" : "Out of Stock",
+//           isAvailable,
+//         },
+
+//         pricingType: priceResult.type,
+
+//         price: {
+//           basePrice,
+//           gstRate,
+//           gstPerUnit,
+//           finalPerUnit,
+//         },
+
+//         quantity: validQty,
+
+//         totals: {
+//           baseTotal,
+//           gstTotal,
+//           finalTotal,
+//         },
+//       });
+//     }
+
+//     const delivery = getDeliveryCharge(distanceKm, subTotal);
+
+//     if (!delivery.isServiceable) {
+//       return res.json({
+//         success: true,
+//         data: items,
+//         summary: {
+//           isServiceable: false,
+//           message: "Delivery not available",
+//         },
+//       });
+//     }
+
+//     const shippingFee = delivery.deliveryCharge;
+//     const grandTotal = subTotal + taxAmount + shippingFee;
+
+//     return res.json({
+//       success: true,
+//       data: items,
+//       summary: {
+//         itemsCount: items.length,
+//         totalQuantity,
+//         subTotal,
+//         tax: { amount: taxAmount },
+//         shippingFee,
+//         grandTotal,
+//         currency: "INR",
+//         distanceKm: Number(distanceKm.toFixed(2)),
+//         isServiceable: true,
+//         canCheckout: items.every(
+//           (i) => i.variant.isAvailable && i.quantity > 0
+//         ),
+//       },
+//     });
+//   } catch (error) {
+//     console.error("GET CART ERROR:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
 
 
 exports.getCart = async (req, res) => {
@@ -643,13 +827,40 @@ exports.getCart = async (req, res) => {
     const cartItems = await CartItem.findAll({
       where: { userId },
       include: [
-        { model: Product, as: "product" },
+        { 
+          model: Product, 
+          as: "product",
+          include: [
+            {
+              model: ProductAttribute,
+              as: "attributes",
+              attributes: ["attributeKey", "attributeValue"],
+            },
+            {
+              model: ProductMeasurement,
+              as: "measurements",
+              attributes: ["measurementId", "value"],
+              include: [{ model: MeasurementMaster, as: "measurement", attributes: ["name", "unit"] }],
+            },
+          ],
+        },
         {
           model: ProductVariant,
           as: "variant",
           include: [
             { model: VariantImage, as: "images", limit: 1 },
             { model: ProductPrice, as: "price" },
+            {
+              model: ProductAttribute,
+              as: "attributes",
+              attributes: ["attributeKey", "attributeValue"],
+            },
+            {
+              model: ProductMeasurement,
+              as: "measurements",
+              attributes: ["measurementId", "value"],
+              include: [{ model: MeasurementMaster, as: "measurement", attributes: ["name", "unit"] }],
+            },
           ],
         },
       ],
@@ -672,6 +883,26 @@ exports.getCart = async (req, res) => {
         },
       });
     }
+
+    // Helper function to format attributes
+    const formatAttributes = (arr) => {
+      const obj = {};
+      (arr || []).forEach((item) => { 
+        obj[item.attributeKey] = item.attributeValue; 
+      });
+      return obj;
+    };
+
+    // Helper function to format measurements
+    const formatMeasurements = (arr) => {
+      const obj = {};
+      (arr || []).forEach((m) => {
+        const label = m.measurement?.name || `ID_${m.measurementId}`;
+        const unit = m.measurement?.unit ? ` ${m.measurement.unit}` : "";
+        obj[label] = `${m.value}${unit}`;
+      });
+      return obj;
+    };
 
     const storeId = cartItems[0].storeId;
 
@@ -730,32 +961,78 @@ exports.getCart = async (req, res) => {
         totalQuantity += validQty;
       }
 
+      // Format product level attributes and measurements
+      const productAttributes = formatAttributes(item.product?.attributes);
+      const productMeasurements = formatMeasurements(item.product?.measurements);
+
+      // Format variant level attributes and measurements
+      const variantAttributes = formatAttributes(item.variant?.attributes);
+      const variantMeasurements = formatMeasurements(item.variant?.measurements);
+
+      // Calculate price details
+      const mrp = item.variant?.price?.mrp || 0;
+      const sellingPrice = item.variant?.price?.sellingPrice || 0;
+      const discount = mrp > 0 ? mrp - sellingPrice : 0;
+      const discountPercentage = mrp > 0 ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0;
+      const gstAmount = (sellingPrice * gstRate) / 100;
+
       items.push({
         cartId: item.id,
         productId: item.productId,
         variantId: item.variantId,
         storeId: item.storeId,
 
-        title: item.product?.title,
-        image: item.variant?.images?.[0]?.imageUrl || null,
+        // Product basic info
+        product: {
+          id: item.product?.id,
+          sku: item.product?.sku,
+          title: item.product?.title,
+          description: item.product?.description,
+          brandName: item.product?.brandName,
+          badge: item.product?.badge,
+          gstRate: item.product?.gstRate,
+          attributes: productAttributes,
+          measurements: productMeasurements,
+        },
 
+        // Variant basic info
         variant: {
+          id: item.variant?.id,
           variantCode: item.variant?.variantCode,
+          unit: item.variant?.unit,
+          moq: item.variant?.moq,
+          packingType: item.variant?.packingType,
+          packQuantity: item.variant?.packQuantity,
+          dispatchType: item.variant?.dispatchType,
+          deliverySla: item.variant?.deliverySla,
+          attributes: variantAttributes,
+          measurements: variantMeasurements,
           stock: currentStock,
           status: isAvailable ? "In Stock" : "Out of Stock",
           isAvailable,
         },
 
-        pricingType: priceResult.type,
+        // Images
+        image: item.variant?.images?.[0]?.imageUrl || null,
 
+        // Pricing
+        pricingType: priceResult.type,
+        
         price: {
+          mrp,
+          sellingPrice,
           basePrice,
           gstRate,
           gstPerUnit,
+          gstAmount: Math.round(gstAmount),
+          gstInclusiveAmount: Math.round(sellingPrice + gstAmount),
           finalPerUnit,
+          discount,
+          discountPercentage,
         },
 
         quantity: validQty,
+        requestedQuantity: item.quantity, // Original requested quantity
 
         totals: {
           baseTotal,
@@ -788,7 +1065,10 @@ exports.getCart = async (req, res) => {
         itemsCount: items.length,
         totalQuantity,
         subTotal,
-        tax: { amount: taxAmount },
+        tax: { 
+          amount: taxAmount,
+          rate: items[0]?.product?.gstRate || 0,
+        },
         shippingFee,
         grandTotal,
         currency: "INR",
