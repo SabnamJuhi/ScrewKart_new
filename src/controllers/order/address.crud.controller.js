@@ -1,29 +1,5 @@
 const UserAddress  = require("../../models/orders/userAddress.model");
 
-// exports.addAddress = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     const data = req.body;
-
-//     // If setting default → unset previous default
-//     if (data.isDefault) {
-//       await UserAddress.update(
-//         { isDefault: false },
-//         { where: { userId } }
-//       );
-//     }
-
-//     const address = await UserAddress.create({ ...data, userId });
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Address added successfully",
-//       data: address,
-//     });
-//   } catch (err) {
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// };
 
 exports.addAddress = async (req, res) => {
   try {
@@ -36,6 +12,14 @@ exports.addAddress = async (req, res) => {
       address,
       isDefault,
     } = req.body;
+
+    // ❗ VALIDATION (IMPORTANT)
+    if (!customerDetails?.email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
 
     // ✅ unset previous default
     if (isDefault) {
@@ -51,6 +35,7 @@ exports.addAddress = async (req, res) => {
       // 👤 Customer
       fullName: customerDetails?.name,
       phoneNumber: customerDetails?.phone,
+      email: customerDetails?.email, // ✅ ADDED
       addressType: customerDetails?.addresstype,
       type,
 
@@ -105,34 +90,6 @@ exports.getUserAddresses = async (req, res) => {
   }
 };
 
-// exports.updateAddress = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const userId = req.user.id;
-//     const data = req.body;
-
-//     const address = await UserAddress.findOne({ where: { id, userId } });
-//     if (!address) throw new Error("Address not found");
-
-//     if (data.isDefault) {
-//       await UserAddress.update(
-//         { isDefault: false },
-//         { where: { userId } }
-//       );
-//     }
-
-//     await address.update(data);
-
-//     res.json({
-//       success: true,
-//       message: "Address updated successfully",
-//       data: address,
-//     });
-//   } catch (err) {
-//     res.status(404).json({ success: false, message: err.message });
-//   }
-// };
-
 exports.updateAddress = async (req, res) => {
   try {
     const { id } = req.params;
@@ -160,6 +117,7 @@ exports.updateAddress = async (req, res) => {
     await existing.update({
       fullName: customerDetails?.name ?? existing.fullName,
       phoneNumber: customerDetails?.phone ?? existing.phoneNumber,
+      email: customerDetails?.email ?? existing.email,
       addressType: customerDetails?.addresstype ?? existing.addressType,
       type: type ?? existing.type,
 

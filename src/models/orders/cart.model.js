@@ -30,6 +30,8 @@
 //   },
 // });
 
+
+
 // module.exports = CartItem;
 
 const { DataTypes } = require("sequelize");
