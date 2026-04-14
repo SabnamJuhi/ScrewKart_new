@@ -1,4 +1,6 @@
 const nodemailer = require("nodemailer");
+const fs = require("fs");
+const path = require("path");
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -131,45 +133,183 @@ exports.sendAutoReplyToCustomer = async ({ name, email }) => {
 };
 
 
+// /**
+//  * Send order email to company and customer
+//  */
+// exports.sendInvoiceEmail = async ({ orderNumber, orderAddress, totalAmount }) => {
+//   if (!orderAddress?.email) {
+//     throw new Error("Customer email missing");
+//   }
+
+//   const companyEmail = process.env.EMAIL_USER; // company receives mail
+
+//   // ---------- COMPANY EMAIL ----------
+//   await transporter.sendMail({
+//     from: `"ScrewKart Orders" <${process.env.EMAIL_USER}>`,
+//     to: companyEmail,
+//     subject: `🛒 New Order Received - ${orderNumber}`,
+//     html: `
+//       <h2>New Order Received</h2>
+//       <p><b>Order Number:</b> ${orderNumber}</p>
+//       <p><b>Customer Name:</b> ${orderAddress.fullName}</p>
+//       <p><b>Email:</b> ${orderAddress.email}</p>
+//       <p><b>Phone:</b> ${orderAddress.phoneNumber}</p>
+//       <p><b>Address:</b> ${orderAddress.addressLine}, ${orderAddress.city}, ${orderAddress.state}</p>
+//       <p><b>Total Amount:</b> ₹${totalAmount}</p>
+//     `,
+//   });
+
+//   // ---------- CUSTOMER EMAIL ----------
+//   await transporter.sendMail({
+//     from: `"ScrewKart" <${process.env.EMAIL_USER}>`,
+//     to: orderAddress.email, // ⚠️ THIS fixes "No recipients defined"
+//     subject: `✅ Order Confirmed - ${orderNumber}`,
+//     html: `
+//       <h2>Thank you for your order!</h2>
+//       <p>Hello ${orderAddress.fullName},</p>
+//       <p>Your order <b>${orderNumber}</b> has been placed successfully.</p>
+//       <p><b>Total Paid:</b> ₹${totalAmount}</p>
+//       <p>We will deliver it soon 🚚</p>
+//       <br/>
+//       <p>Regards,<br/>ScrewKart Team</p>
+//     `,
+//   });
+// };
+
+
 /**
- * Send order email to company and customer
+ * Send order email to company and customer with invoice attachment
  */
-exports.sendInvoiceEmail = async ({ orderNumber, orderAddress, totalAmount }) => {
+exports.sendInvoiceEmail = async ({ 
+  orderNumber, 
+  orderAddress, 
+  orderItems, 
+  totalAmount,
+  subtotal,
+  taxAmount,
+  shippingFee,
+  distanceKm,
+  shippingType,
+  invoicePath,
+  userPrimaryEmail  // ← Add this parameter
+}) => {
+  console.log("📧 sendInvoiceEmail called with:", {
+    orderNumber,
+    customerEmail: orderAddress?.email,
+    userPrimaryEmail,
+    hasOrderItems: !!orderItems,
+    orderItemsCount: orderItems?.length,
+    invoicePath,
+    invoiceExists: invoicePath ? fs.existsSync(invoicePath) : false
+  });
+
   if (!orderAddress?.email) {
+    console.error("❌ Customer email missing!");
     throw new Error("Customer email missing");
   }
 
-  const companyEmail = process.env.EMAIL_USER; // company receives mail
+  const companyEmail = process.env.EMAIL_USER;
+  console.log("📧 Company email:", companyEmail);
 
-  // ---------- COMPANY EMAIL ----------
-  await transporter.sendMail({
-    from: `"ScrewKart Orders" <${process.env.EMAIL_USER}>`,
-    to: companyEmail,
-    subject: `🛒 New Order Received - ${orderNumber}`,
-    html: `
-      <h2>New Order Received</h2>
-      <p><b>Order Number:</b> ${orderNumber}</p>
-      <p><b>Customer Name:</b> ${orderAddress.fullName}</p>
-      <p><b>Email:</b> ${orderAddress.email}</p>
-      <p><b>Phone:</b> ${orderAddress.phoneNumber}</p>
-      <p><b>Address:</b> ${orderAddress.addressLine}, ${orderAddress.city}, ${orderAddress.state}</p>
-      <p><b>Total Amount:</b> ₹${totalAmount}</p>
-    `,
-  });
+  // Prepare attachments array if invoice exists
+  const attachments = [];
+  if (invoicePath && fs.existsSync(invoicePath)) {
+    console.log("📎 Attaching invoice file:", invoicePath);
+    // Get absolute path and verify file size
+    const absolutePath = path.resolve(invoicePath);
+    const stats = fs.statSync(absolutePath);
+    console.log(`📎 File size: ${stats.size} bytes`);
+    
+    attachments.push({
+      filename: `invoice-${orderNumber}.pdf`,
+      path: absolutePath,
+      contentType: 'application/pdf'
+    });
+  } else {
+    console.warn("⚠️ Invoice file not found at:", invoicePath);
+  }
 
-  // ---------- CUSTOMER EMAIL ----------
-  await transporter.sendMail({
-    from: `"ScrewKart" <${process.env.EMAIL_USER}>`,
-    to: orderAddress.email, // ⚠️ THIS fixes "No recipients defined"
-    subject: `✅ Order Confirmed - ${orderNumber}`,
-    html: `
-      <h2>Thank you for your order!</h2>
-      <p>Hello ${orderAddress.fullName},</p>
-      <p>Your order <b>${orderNumber}</b> has been placed successfully.</p>
-      <p><b>Total Paid:</b> ₹${totalAmount}</p>
-      <p>We will deliver it soon 🚚</p>
-      <br/>
-      <p>Regards,<br/>ScrewKart Team</p>
-    `,
-  });
+  // Collect all recipients
+  const recipients = [companyEmail, orderAddress.email];
+  if (userPrimaryEmail && userPrimaryEmail !== orderAddress.email) {
+    recipients.push(userPrimaryEmail);
+  }
+  
+  console.log("📧 Sending to recipients:", recipients);
+
+  // Email HTML content
+  const emailHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .header { background: #4CAF50; color: white; padding: 10px; text-align: center; }
+        .order-details { background: #f9f9f9; padding: 15px; margin: 15px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; }
+        .total { font-size: 18px; font-weight: bold; color: #4CAF50; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>Order Confirmation - ${orderNumber}</h2>
+        </div>
+        
+        <div class="order-details">
+          <h3>Dear ${orderAddress.fullName},</h3>
+          <p>Thank you for your order! Your order has been placed successfully.</p>
+          
+          <h3>Order Summary:</h3>
+          <table>
+            <thead>
+              <tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>
+            </thead>
+            <tbody>
+              ${orderItems?.map(item => `
+                <tr>
+                  <td>${item.productName}</td>
+                  <td style="text-align:center">${item.quantity}</td>
+                  <td style="text-align:right">₹${item.basePrice}</td>
+                  <td style="text-align:right">₹${item.totalPrice}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+           </table>
+          
+          <hr/>
+          <p><strong>Subtotal:</strong> ₹${subtotal}</p>
+          <p><strong>Tax (GST):</strong> ₹${taxAmount}</p>
+          <p><strong>Shipping Fee:</strong> ₹${shippingFee}</p>
+          <p class="total"><strong>Total Amount:</strong> ₹${totalAmount}</p>
+          
+          ${attachments.length > 0 ? '<p><strong>📎 Invoice is attached to this email.</strong></p>' : '<p><strong>⚠️ Invoice will be sent separately.</strong></p>'}
+          
+          <p>We will process your order soon and keep you updated.</p>
+          <p>Regards,<br/>ScrewKart Team</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Send to all recipients
+  for (const recipient of recipients) {
+    try {
+      console.log(`📧 Sending email to: ${recipient}`);
+      const info = await transporter.sendMail({
+        from: `"ScrewKart" <${process.env.EMAIL_USER}>`,
+        to: recipient,
+        subject: `✅ Order Confirmed - ${orderNumber}`,
+        html: emailHtml,
+        attachments: attachments,
+      });
+      console.log(`✅ Email sent successfully to: ${recipient}`, info.messageId);
+    } catch (err) {
+      console.error(`❌ Failed to send email to ${recipient}:`, err.message);
+    }
+  }
 };

@@ -69,6 +69,8 @@ app.use('/api/stores', require("./routes/store/store.routes"))
 
 app.use('/api/master', require("./routes/measurements/measurements.routes"))
 
+app.use("/api/delivery", require("./routes/delivery/delivery.routes"));
+
 
 app.use((err, req, res, next) => {
   console.error("GLOBAL ERROR:", err);

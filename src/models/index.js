@@ -43,8 +43,14 @@ const StoreInventory = require("./products/StoreInventory.model");
 const ProductAttribute = require("./products/ProductAttribute.model");
 const ProductMeasurement = require("./products/ProductMeasurement.model");
 const MeasurementMaster = require("./measurements/MeasurementMaster.model");
-const VariantPricingSlab = require("./products/variantPricingSlab.model")
+const VariantPricingSlab = require("./products/variantPricingSlab.model");
+const DeliverySlot = require("./delivery/deliverySlot.model");
 
+
+
+DeliverySlot.hasMany(Order, {foreignKey: "deliverySlotId",as: "orders"});
+
+Order.belongsTo(DeliverySlot, {foreignKey: "deliverySlotId",as: "slot"});
 
 // ProductMeasurement → MeasurementMaster
 ProductMeasurement.belongsTo(MeasurementMaster, { foreignKey: "measurementId", as: "measurement",});
@@ -272,5 +278,6 @@ module.exports = {
   StoreInventory,
   ProductAttribute,
   ProductMeasurement,
-  MeasurementMaster
+  MeasurementMaster,
+  DeliverySlot
 }

@@ -40,6 +40,11 @@
 //   },
 // });
 
+
+
+
+
+
 // module.exports = Order;
 
 const { DataTypes } = require("sequelize");
@@ -90,7 +95,13 @@ const Order = sequelize.define(
 
     // --- Payment ---
     paymentStatus: {
-      type: DataTypes.ENUM("unpaid", "paid", "failed", "refund_pending", "refunded"),
+      type: DataTypes.ENUM(
+        "unpaid",
+        "paid",
+        "failed",
+        "refund_pending",
+        "refunded",
+      ),
       defaultValue: "unpaid",
     },
 
@@ -102,11 +113,6 @@ const Order = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
-    // NEW → hashed OTP storage
-    // deliveryOtpHash: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true,
-    // },
     deliveryBoyId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -124,12 +130,33 @@ const Order = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    invoiceUrl: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
 
-    // // --- Address Snapshot (important for history) ---
-    // shippingAddress: {
-    //   type: DataTypes.JSON,
-    //   allowNull: false,
-    // },
+    invoiceStatus: {
+      type: DataTypes.ENUM("pending", "generated", "failed"),
+      defaultValue: "pending",
+    },
+
+    deliverySlotId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    deliveryDate: {
+      type: DataTypes.DATEONLY,
+    },
+
+    distanceKm: {
+      type: DataTypes.FLOAT,
+    },
+
+    deliveryType: {
+      type: DataTypes.ENUM("delivery", "pickup"),
+      defaultValue: "delivery",
+    },
 
     // --- Timeline Tracking ---
     confirmedAt: DataTypes.DATE,
