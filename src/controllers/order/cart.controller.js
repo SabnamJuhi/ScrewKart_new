@@ -607,11 +607,6 @@
 //   return res.json({ allowed: true });
 // };
 
-
-
-
-
-
 const {
   CartItem,
   Product,
@@ -630,199 +625,21 @@ const { getDistanceKm } = require("../../utils/distance");
 const checkCartStoreConflict = require("../../utils/checkCartStoreConflict");
 const priceService = require("../../services/price.service");
 
-
-// exports.getCart = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     const { latitude, longitude } = req.query;
-
-//     if (!latitude || !longitude) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "User location required",
-//       });
-//     }
-
-//     const cartItems = await CartItem.findAll({
-//       where: { userId },
-//       include: [
-//         { model: Product, as: "product" },
-//         {
-//           model: ProductVariant,
-//           as: "variant",
-//           include: [
-//             { model: VariantImage, as: "images", limit: 1 },
-//             { model: ProductPrice, as: "price" },
-//           ],
-//         },
-//       ],
-//       order: [["createdAt", "DESC"]],
-//     });
-
-//     if (!cartItems.length) {
-//       return res.json({
-//         success: true,
-//         data: [],
-//         summary: {
-//           itemsCount: 0,
-//           totalQuantity: 0,
-//           subTotal: 0,
-//           tax: { amount: 0 },
-//           shippingFee: 0,
-//           grandTotal: 0,
-//           currency: "INR",
-//           canCheckout: false,
-//         },
-//       });
-//     }
-
-//     const storeId = cartItems[0].storeId;
-
-//     const store = await Store.findByPk(storeId);
-
-//     const distanceKm = getDistanceKm(
-//       Number(latitude),
-//       Number(longitude),
-//       Number(store.latitude),
-//       Number(store.longitude)
-//     );
-
-//     /* 🔥 INVENTORY */
-//     const inventoryList = await StoreInventory.findAll({
-//       where: { storeId },
-//     });
-
-//     const inventoryMap = {};
-//     inventoryList.forEach((inv) => {
-//       inventoryMap[inv.variantId] = inv.stock;
-//     });
-
-//     let subTotal = 0;
-//     let taxAmount = 0;
-//     let totalQuantity = 0;
-
-//     const items = [];
-
-//     for (const item of cartItems) {
-//       const currentStock = inventoryMap[item.variantId] || 0;
-
-//       const isAvailable = currentStock > 0;
-//       const validQty = isAvailable
-//         ? Math.min(item.quantity, currentStock)
-//         : 0;
-
-//       /* 🔥 DYNAMIC PRICE */
-//       const priceResult = await priceService.getFinalPrice(
-//         item.variantId,
-//         validQty || 1
-//       );
-
-//       const basePrice = Number(priceResult.price);
-//       const gstRate = Number(item.product?.gstRate) || 0;
-
-//       const gstPerUnit = Math.round((basePrice * gstRate) / 100);
-//       const finalPerUnit = basePrice + gstPerUnit;
-
-//       const baseTotal = basePrice * validQty;
-//       const gstTotal = gstPerUnit * validQty;
-//       const finalTotal = finalPerUnit * validQty;
-
-//       if (isAvailable) {
-//         subTotal += baseTotal;
-//         taxAmount += gstTotal;
-//         totalQuantity += validQty;
-//       }
-
-//       items.push({
-//         cartId: item.id,
-//         productId: item.productId,
-//         variantId: item.variantId,
-//         storeId: item.storeId,
-
-//         title: item.product?.title,
-//         image: item.variant?.images?.[0]?.imageUrl || null,
-
-//         variant: {
-//           variantCode: item.variant?.variantCode,
-//           stock: currentStock,
-//           status: isAvailable ? "In Stock" : "Out of Stock",
-//           isAvailable,
-//         },
-
-//         pricingType: priceResult.type,
-
-//         price: {
-//           basePrice,
-//           gstRate,
-//           gstPerUnit,
-//           finalPerUnit,
-//         },
-
-//         quantity: validQty,
-
-//         totals: {
-//           baseTotal,
-//           gstTotal,
-//           finalTotal,
-//         },
-//       });
-//     }
-
-//     const delivery = getDeliveryCharge(distanceKm, subTotal);
-
-//     if (!delivery.isServiceable) {
-//       return res.json({
-//         success: true,
-//         data: items,
-//         summary: {
-//           isServiceable: false,
-//           message: "Delivery not available",
-//         },
-//       });
-//     }
-
-//     const shippingFee = delivery.deliveryCharge;
-//     const grandTotal = subTotal + taxAmount + shippingFee;
-
-//     return res.json({
-//       success: true,
-//       data: items,
-//       summary: {
-//         itemsCount: items.length,
-//         totalQuantity,
-//         subTotal,
-//         tax: { amount: taxAmount },
-//         shippingFee,
-//         grandTotal,
-//         currency: "INR",
-//         distanceKm: Number(distanceKm.toFixed(2)),
-//         isServiceable: true,
-//         canCheckout: items.every(
-//           (i) => i.variant.isAvailable && i.quantity > 0
-//         ),
-//       },
-//     });
-//   } catch (error) {
-//     console.error("GET CART ERROR:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message,
-//     });
-//   }
-// };
-
-
 exports.getCart = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { latitude, longitude } = req.query;
+    const { latitude, longitude, deliveryType = "delivery" } = req.query;
 
-    if (!latitude || !longitude) {
-      return res.status(400).json({
-        success: false,
-        message: "User location required",
-      });
-    }
+    // ✅ Allow cart view without location (pickup only)
+    const hasLocation = latitude && longitude;
+    
+    let distanceKm = null;
+    let store = null;
+    let isDeliveryAvailable = false;
+    let availableOptions = ['pickup']; // Default: at least pickup available
+    let defaultOption = 'pickup';
+    let customerMessage = "";
+    let warningMessage = null;
 
     const cartItems = await CartItem.findAll({
       where: { userId },
@@ -879,6 +696,11 @@ exports.getCart = async (req, res) => {
           shippingFee: 0,
           grandTotal: 0,
           currency: "INR",
+          isDeliveryAvailable: false,
+          isSelfPickupAvailable: true,
+          availableOptions: ['pickup'],
+          defaultOption: 'pickup',
+          message: "Your cart is empty",
           canCheckout: false,
         },
       });
@@ -905,15 +727,48 @@ exports.getCart = async (req, res) => {
     };
 
     const storeId = cartItems[0].storeId;
+    store = await Store.findByPk(storeId);
 
-    const store = await Store.findByPk(storeId);
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Store not found",
+      });
+    }
 
-    const distanceKm = getDistanceKm(
-      Number(latitude),
-      Number(longitude),
-      Number(store.latitude),
-      Number(store.longitude)
-    );
+    // ✅ Calculate distance only if location provided
+    if (hasLocation) {
+      distanceKm = getDistanceKm(
+        Number(latitude),
+        Number(longitude),
+        Number(store.latitude),
+        Number(store.longitude)
+      );
+      
+      // Check delivery availability based on store's delivery radius
+      const deliveryRadius = store.deliveryRadius || 8;
+      isDeliveryAvailable = distanceKm <= deliveryRadius;
+      
+      // Set available options based on distance
+      if (isDeliveryAvailable) {
+        availableOptions = ['delivery', 'pickup'];
+        defaultOption = deliveryType === 'pickup' ? 'pickup' : 'delivery';
+        customerMessage = `✅ Delivery available to your location (${distanceKm.toFixed(2)}km from store)`;
+      } else {
+        availableOptions = ['pickup'];
+        defaultOption = 'pickup';
+        customerMessage = `📍 Delivery not available (${distanceKm.toFixed(2)}km > ${deliveryRadius}km). Please choose self-pickup.`;
+        warningMessage = `Your location is ${distanceKm.toFixed(2)}km away, which exceeds our ${deliveryRadius}km delivery limit. Only self-pickup is available.`;
+      }
+    } else {
+      // No location provided - pickup only
+      distanceKm = null;
+      isDeliveryAvailable = false;
+      availableOptions = ['pickup'];
+      defaultOption = 'pickup';
+      customerMessage = "📍 Location not provided. Please select self-pickup or provide location for delivery.";
+      warningMessage = "Enable location access to check delivery availability to your address.";
+    }
 
     /* 🔥 INVENTORY */
     const inventoryList = await StoreInventory.findAll({
@@ -1032,7 +887,7 @@ exports.getCart = async (req, res) => {
         },
 
         quantity: validQty,
-        requestedQuantity: item.quantity, // Original requested quantity
+        requestedQuantity: item.quantity,
 
         totals: {
           baseTotal,
@@ -1042,21 +897,43 @@ exports.getCart = async (req, res) => {
       });
     }
 
-    const delivery = getDeliveryCharge(distanceKm, subTotal);
-
-    if (!delivery.isServiceable) {
-      return res.json({
-        success: true,
-        data: items,
-        summary: {
-          isServiceable: false,
-          message: "Delivery not available",
-        },
-      });
+    // ✅ Calculate shipping fee based on delivery type and availability
+    let shippingFee = 0;
+    let finalDeliveryType = defaultOption;
+    
+    if (finalDeliveryType === 'pickup') {
+      // Self-pickup: always free
+      shippingFee = 0;
+    } else if (isDeliveryAvailable && hasLocation) {
+      // Delivery only if available
+      const delivery = getDeliveryCharge(distanceKm, subTotal, 'delivery');
+      if (delivery.isServiceable) {
+        shippingFee = delivery.deliveryCharge;
+      } else {
+        // Fallback to pickup if delivery not serviceable
+        finalDeliveryType = 'pickup';
+        shippingFee = 0;
+        customerMessage = "Delivery not available. Please choose self-pickup.";
+      }
+    } else {
+      // Force pickup if delivery not available
+      finalDeliveryType = 'pickup';
+      shippingFee = 0;
     }
 
-    const shippingFee = delivery.deliveryCharge;
     const grandTotal = subTotal + taxAmount + shippingFee;
+
+    // ✅ Prepare store information for pickup
+    const storeInfo = {
+      id: store.id,
+      name: store.name,
+      address: store.address,
+      latitude: store.latitude,
+      longitude: store.longitude,
+      openTime: store.openTime,
+      closeTime: store.closeTime,
+      phone: store.phone,
+    };
 
     return res.json({
       success: true,
@@ -1072,11 +949,29 @@ exports.getCart = async (req, res) => {
         shippingFee,
         grandTotal,
         currency: "INR",
-        distanceKm: Number(distanceKm.toFixed(2)),
-        isServiceable: true,
-        canCheckout: items.every(
-          (i) => i.variant.isAvailable && i.quantity > 0
-        ),
+        distanceKm: distanceKm ? Number(distanceKm.toFixed(2)) : null,
+        
+        // ✅ New fields for delivery/pickup options
+        isDeliveryAvailable: isDeliveryAvailable && hasLocation,
+        isSelfPickupAvailable: true,
+        availableOptions: availableOptions,
+        defaultOption: finalDeliveryType,
+        selectedOption: finalDeliveryType,
+        
+        // ✅ Customer friendly messages
+        message: customerMessage,
+        warning: warningMessage,
+        
+        // ✅ Store info for pickup
+        store: storeInfo,
+        
+        // ✅ Checkout eligibility
+        canCheckout: items.every((i) => i.variant.isAvailable && i.quantity > 0),
+        
+        // ✅ Delivery note
+        deliveryNote: finalDeliveryType === 'pickup' 
+          ? "Please visit the store to collect your order. Store hours: " + store.openTime + " - " + store.closeTime
+          : "Your order will be delivered to your address within the selected time slot.",
       },
     });
   } catch (error) {

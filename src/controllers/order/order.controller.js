@@ -33,6 +33,7 @@ const { sendInvoiceEmail } = require("../../utils/email");
 const { getDistanceKm } = require("../../utils/distance");
 const { getDeliveryCharge } = require("../../utils/deliveryCharges");
 const { getAvailableSlots } = require("../../services/slot.service");
+const moment = require("moment");
 
 function generateOtp() {
   return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
@@ -49,9 +50,10 @@ exports.placeOrder = async (req, res) => {
       addressId,
       paymentMethod,
       buyNow,
-      deliveryType = "delivery", // ✅ Changed from shippingType to deliveryType
+      deliveryType = "delivery",
       deliverySlotId: requestedSlotId,
       deliveryDate: requestedDate,
+      pickupTime, // Optional: customer can specify pickup time
     } = req.body;
 
     if (!addressId) throw new Error("Address is required");
@@ -77,10 +79,10 @@ exports.placeOrder = async (req, res) => {
     const userLatitude = userAddress.latitude;
     const userLongitude = userAddress.longitude;
 
-    // ✅ Fixed: Use deliveryType instead of shippingType
+    // Validate coordinates for delivery
     if (deliveryType === "delivery" && (!userLatitude || !userLongitude)) {
       throw new Error(
-        "Address coordinates missing. Please update your address with valid latitude and longitude.",
+        "Address coordinates missing. Please update your address with valid latitude and longitude."
       );
     }
 
@@ -291,13 +293,13 @@ exports.placeOrder = async (req, res) => {
 
         if (!storeInventory || storeInventory.stock < item.quantity) {
           throw new Error(
-            `Insufficient stock for ${item.product?.title || "product"}`,
+            `Insufficient stock for ${item.product?.title || "product"}`
           );
         }
 
         const priceResult = await priceService.getFinalPrice(
           item.variantId,
-          item.quantity,
+          item.quantity
         );
         item.storeInventory = storeInventory;
         item.basePrice = Number(priceResult.price);
@@ -326,7 +328,7 @@ exports.placeOrder = async (req, res) => {
       if (!basePrice || qty <= 0) throw new Error("Invalid order item");
       if (stock < qty) {
         throw new Error(
-          `Insufficient stock for ${item.product?.title || "product"}. Available: ${stock}`,
+          `Insufficient stock for ${item.product?.title || "product"}. Available: ${stock}`
         );
       }
 
@@ -369,7 +371,7 @@ exports.placeOrder = async (req, res) => {
         measurements: formatMeasurements(item.variant?.measurements),
       };
 
-      // Prepare variant info JSON (additional flexible data)
+      // Prepare variant info JSON
       const variantInfo = {
         variantCode: item.variant?.variantCode,
         unit: item.variant?.unit,
@@ -407,41 +409,48 @@ exports.placeOrder = async (req, res) => {
       });
     }
 
-    // ================= GET STORE AND CALCULATE DISTANCE (for delivery only) =================
+    // ================= GET STORE AND CALCULATE DISTANCE =================
     let distanceKm = 0;
     let shippingFee = 0;
     let assignedDeliverySlotId = null;
     let assignedDeliveryDate = null;
+    let pickupInstructions = null;
 
-    // ✅ Fixed: Use deliveryType instead of shippingType
+    const store = await Store.findByPk(storeId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!store) throw new Error("Store not found");
+
     if (deliveryType === "delivery") {
-      const store = await Store.findByPk(storeId, {
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (!store) throw new Error("Store not found");
-
       // Validate store coordinates
       if (!store.latitude || !store.longitude) {
         throw new Error("Store location coordinates not configured");
       }
 
-      // Calculate distance using coordinates from database
+      // Calculate distance
       distanceKm = getDistanceKm(
         Number(userLatitude),
         Number(userLongitude),
         Number(store.latitude),
-        Number(store.longitude),
+        Number(store.longitude)
       );
 
-      console.log(
-        `Distance calculated: ${distanceKm.toFixed(2)}km between user address and store`,
-      );
+      console.log(`Distance calculated: ${distanceKm.toFixed(2)}km between user address and store`);
+
+      // Check if delivery is available at this distance
+      const deliveryRadius = store.deliveryRadius || 8;
+      if (distanceKm > deliveryRadius) {
+        throw new Error(
+          `❌ Delivery not available to your location (${distanceKm.toFixed(2)}km > ${deliveryRadius}km). ` +
+          `Please choose "self-pickup" option. You can collect your order from our store at: ${store.address || store.location}`
+        );
+      }
 
       // ================= DELIVERY SLOT VALIDATION =================
       if (!requestedSlotId || !requestedDate) {
-        throw new Error("Delivery slot is required for delivery orders");
+        throw new Error("Please select a delivery slot for delivery orders");
       }
 
       // Validate slot exists and is available
@@ -464,25 +473,28 @@ exports.placeOrder = async (req, res) => {
         throw new Error("Delivery slot is full. Please select another slot");
       }
 
-      // Check 30-min buffer
+      // Check 30-min buffer for today
       const now = new Date();
       const bufferTime = new Date(now.getTime() + 30 * 60000);
       const slotStart = new Date(`${slot.date}T${slot.startTime}`);
+      const isToday = requestedDate === new Date().toISOString().split('T')[0];
 
-      if (slotStart <= bufferTime) {
+      if (isToday && slotStart <= bufferTime) {
+        const nextSlotTime = new Date(bufferTime);
+        nextSlotTime.setMinutes(Math.ceil(nextSlotTime.getMinutes() / 60) * 60);
         throw new Error(
-          `Minimum 30 minutes preparation time required. Earliest slot: ${slot.startTime}`,
+          `⚠️ Minimum 30 minutes preparation time required. ` +
+          `Earliest available slot is after ${nextSlotTime.toLocaleTimeString()}. ` +
+          `Please select a later slot or choose tomorrow.`
         );
       }
 
-      // Check if slot is in the past
-      if (slotStart <= now) {
+      if (slotStart <= now && isToday) {
         throw new Error("Cannot select a past delivery slot");
       }
 
       // Reserve the slot
       await slot.increment("currentOrders", { transaction: t });
-
       if (slot.currentOrders + 1 >= slot.maxCapacity) {
         await slot.update({ status: "full" }, { transaction: t });
       }
@@ -490,16 +502,48 @@ exports.placeOrder = async (req, res) => {
       assignedDeliverySlotId = slot.id;
       assignedDeliveryDate = requestedDate;
 
-      // ================= DYNAMIC SHIPPING CALCULATION =================
-      const delivery = getDeliveryCharge(distanceKm, subtotal);
-
+      // Calculate shipping fee
+      const delivery = getDeliveryCharge(distanceKm, subtotal, "delivery");
       if (!delivery.isServiceable) {
+        throw new Error(delivery.message);
+      }
+      shippingFee = delivery.deliveryCharge;
+      
+    } else if (deliveryType === "pickup") {
+      // ================= SELF-PICKUP VALIDATION =================
+      const currentTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
+      
+      // Check if store is open for pickup
+      if (currentTime < store.openTime) {
         throw new Error(
-          `Delivery not available at this location. Distance: ${distanceKm.toFixed(2)}km`,
+          `Store opens at ${store.openTime}. Pickup available after opening time. ` +
+          `Please visit the store between ${store.openTime} - ${store.closeTime}`
         );
       }
-
-      shippingFee = delivery.deliveryCharge;
+      
+      if (currentTime > store.closeTime) {
+        throw new Error(
+          `Store closed at ${store.closeTime}. Please visit tomorrow for pickup. ` +
+          `Store hours: ${store.openTime} - ${store.closeTime}`
+        );
+      }
+      
+      // No shipping fee for pickup
+      shippingFee = 0;
+      distanceKm = userLatitude && userLongitude ? 
+        getDistanceKm(userLatitude, userLongitude, store.latitude, store.longitude) : null;
+      
+      // Prepare pickup instructions
+      pickupInstructions = {
+        storeName: store.name,
+        storeAddress: store.address || store.location,
+        storeTiming: `${store.openTime} - ${store.closeTime}`,
+        message: "Please visit the store with your order number and OTP to collect your items.",
+        whatToBring: ["Order Number", "OTP", "Valid ID proof"],
+        pickupWindow: "Same day pickup available during store hours"
+      };
+      
+      console.log(`✅ Self-pickup order - Store: ${store.name}`);
     }
 
     const totalAmount = subtotal + totalTax + shippingFee;
@@ -507,9 +551,7 @@ exports.placeOrder = async (req, res) => {
     // COD allowed only below ₹5000
     const isCOD = paymentMethod === "COD";
     if (isCOD && totalAmount >= 5000) {
-      throw new Error(
-        "Cash on Delivery is only available for orders below ₹5000",
-      );
+      throw new Error("Cash on Delivery is only available for orders below ₹5000");
     }
 
     const otp = isCOD ? generateOtp() : null;
@@ -531,12 +573,12 @@ exports.placeOrder = async (req, res) => {
         confirmedAt: isCOD ? new Date() : null,
         deliverySlotId: assignedDeliverySlotId,
         deliveryDate: assignedDeliveryDate,
-        distanceKm: deliveryType === "delivery" ? distanceKm : null,
+        distanceKm: distanceKm ? Number(distanceKm.toFixed(2)) : null,
         deliveryType: deliveryType,
         invoiceStatus: "pending",
         invoiceUrl: null,
       },
-      { transaction: t },
+      { transaction: t }
     );
 
     // ================= ORDER ITEMS =================
@@ -571,7 +613,6 @@ exports.placeOrder = async (req, res) => {
     console.log(`✅ Created ${orderItems.length} order items`);
 
     // ================= ADDRESS SNAPSHOT =================
-    // ✅ REMOVED shippingType from address - now only in order table
     const addressData = {
       orderId: order.id,
       fullName: userAddress.fullName,
@@ -582,24 +623,20 @@ exports.placeOrder = async (req, res) => {
       state: userAddress.state,
       zipCode: userAddress.zipCode,
       country: userAddress.country,
-      // shippingType removed - now in order table only
     };
 
     // Add optional fields
     if (userAddress.house) addressData.house = userAddress.house;
-    if (userAddress.neighborhood)
-      addressData.neighborhood = userAddress.neighborhood;
+    if (userAddress.neighborhood) addressData.neighborhood = userAddress.neighborhood;
     if (userAddress.landmark) addressData.landmark = userAddress.landmark;
     if (userAddress.area) addressData.area = userAddress.area;
     if (userAddress.locality) addressData.locality = userAddress.locality;
-    if (userAddress.selectedAddressLine)
-      addressData.selectedAddressLine = userAddress.selectedAddressLine;
+    if (userAddress.selectedAddressLine) addressData.selectedAddressLine = userAddress.selectedAddressLine;
     if (userAddress.latitude) addressData.latitude = userAddress.latitude;
     if (userAddress.longitude) addressData.longitude = userAddress.longitude;
     if (userAddress.placeId) addressData.placeId = userAddress.placeId;
 
-    addressData.formattedAddress =
-      userAddress.formattedAddress ||
+    addressData.formattedAddress = userAddress.formattedAddress ||
       `${userAddress.addressLine}, ${userAddress.city}, ${userAddress.state} ${userAddress.zipCode}, ${userAddress.country}`;
 
     await OrderAddress.create(addressData, { transaction: t });
@@ -626,7 +663,7 @@ exports.placeOrder = async (req, res) => {
           totalStock: remainingStock,
           stockStatus: remainingStock > 0 ? "In Stock" : "Out of Stock",
         },
-        { where: { id: itemData.variantId }, transaction: t },
+        { where: { id: itemData.variantId }, transaction: t }
       );
     }
 
@@ -635,125 +672,107 @@ exports.placeOrder = async (req, res) => {
       await CartItem.destroy({ where: { userId }, transaction: t });
     }
 
-    // ================= AFTER TRANSACTION COMMIT =================
-await t.commit();
+    // ================= COMMIT TRANSACTION =================
+    await t.commit();
 
-// ================= GENERATE INVOICE AFTER COMMIT =================
-let invoicePath = null;
-try {
-  console.log("📄 Generating invoice for order:", order.orderNumber);
-  console.log("Order items count:", orderItems.length);
-  
-  // Verify data types before generating invoice
-  if (orderItems.length > 0) {
-    console.log("Sample item data types:", {
-      productName: orderItems[0].productName,
-      quantity: typeof orderItems[0].quantity,
-      basePrice: typeof orderItems[0].basePrice,
-      basePriceValue: orderItems[0].basePrice
-    });
-  }
-  
-  // Generate invoice using in-memory data (not fetched from DB)
-  invoicePath = await generateInvoice({
-    order: order.toJSON ? order.toJSON() : order,  // Convert to plain object
-    orderItems: orderItems.map(item => item.toJSON ? item.toJSON() : item), // Convert to plain objects
-    address: addressData,  // Already a plain object
-  });
-  
-  if (invoicePath && invoicePath !== null) {
-    console.log("✅ Invoice generated successfully at:", invoicePath);
+    // ================= GENERATE INVOICE AFTER COMMIT =================
+    let invoicePath = null;
+    const fs = require('fs');
+    const path = require('path');
     
-    // Update database with invoice info
-    await Order.update(
-      {
-        invoiceUrl: invoicePath,
-        invoiceStatus: "generated",
-      },
-      {
-        where: { id: order.id },
+    try {
+      console.log("📄 Generating invoice for order:", order.orderNumber);
+      console.log("Order items count:", orderItems.length);
+      
+      // Ensure invoices directory exists
+      const invoiceDir = path.join(process.cwd(), 'invoices');
+      if (!fs.existsSync(invoiceDir)) {
+        fs.mkdirSync(invoiceDir, { recursive: true });
       }
-    );
-    console.log("✅ Invoice URL saved to database for order:", order.orderNumber);
-  } else {
-    console.warn("⚠️ Invoice generation returned null path");
-    await Order.update(
-      {
-        invoiceStatus: "failed",
-      },
-      {
-        where: { id: order.id },
+      
+      // Generate invoice using in-memory data
+      invoicePath = await generateInvoice({
+        order: order.toJSON ? order.toJSON() : order,
+        orderItems: orderItems.map(item => item.toJSON ? item.toJSON() : item),
+        address: addressData,
+      });
+      
+      if (invoicePath && fs.existsSync(invoicePath)) {
+        console.log("✅ Invoice generated successfully at:", invoicePath);
+        
+        // Update database with invoice info
+        await Order.update(
+          {
+            invoiceUrl: invoicePath,
+            invoiceStatus: "generated",
+          },
+          {
+            where: { id: order.id },
+          }
+        );
+        console.log("✅ Invoice URL saved to database for order:", order.orderNumber);
+      } else {
+        console.warn("⚠️ Invoice generation returned invalid path");
+        await Order.update(
+          { invoiceStatus: "failed" },
+          { where: { id: order.id } }
+        );
       }
-    );
-  }
-  
-} catch (err) {
-  console.error("❌ Invoice generation failed:", err.message);
-  console.error("Error stack:", err.stack);
-  
-  // Update invoice status to failed
-  try {
-    await Order.update(
-      {
-        invoiceStatus: "failed",
-      },
-      {
-        where: { id: order.id },
-      }
-    );
-    console.log("✅ Invoice status updated to 'failed' in database");
-  } catch (updateError) {
-    console.error("Failed to update invoice status:", updateError);
-  }
-}
+      
+    } catch (err) {
+      console.error("❌ Invoice generation failed:", err.message);
+      await Order.update(
+        { invoiceStatus: "failed" },
+        { where: { id: order.id } }
+      ).catch(console.error);
+    }
 
-// Send Email with invoice
-if (process.env.NODE_ENV !== "test") {
-  // Check if invoice file actually exists
-  const fs = require('fs');
-  const invoiceExists = invoicePath && fs.existsSync(invoicePath);
-  
-  console.log("📧 Sending email with invoice:", {
-    orderNumber: order.orderNumber,
-    invoicePath,
-    invoiceExists
-  });
-  
-  sendInvoiceEmail({
-    orderNumber: order.orderNumber,
-    orderAddress: addressData,
-    orderItems: orderItems,
-    totalAmount: order.totalAmount,
-    subtotal: order.subtotal,
-    taxAmount: order.taxAmount,
-    shippingFee: order.shippingFee,
-    distanceKm: distanceKm.toFixed(2),
-    deliveryType: deliveryType,
-    invoicePath: invoiceExists ? invoicePath : null,
-  }).catch((err) => {
-    console.error("❌ Email sending failed:", err);
-  });
-}
-
-    // ================= RESPONSE =================
-    if (isCOD) {
-      return res.json({
-        success: true,
-        message: "Order placed with Cash on Delivery",
+    // ================= SEND EMAIL =================
+    if (process.env.NODE_ENV !== "test") {
+      const invoiceExists = invoicePath && fs.existsSync(invoicePath);
+      
+      sendInvoiceEmail({
         orderNumber: order.orderNumber,
+        orderAddress: addressData,
+        orderItems: orderItems,
         totalAmount: order.totalAmount,
         subtotal: order.subtotal,
         taxAmount: order.taxAmount,
         shippingFee: order.shippingFee,
-        distanceKm: distanceKm.toFixed(2),
-        deliveryType: deliveryType, // ✅ Changed from shippingType
-        otp: otp,
-        deliverySlotId: assignedDeliverySlotId,
-        deliveryDate: assignedDeliveryDate,
+        distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+        deliveryType: deliveryType,
+        invoicePath: invoiceExists ? invoicePath : null,
+      }).catch((err) => {
+        console.error("❌ Email sending failed:", err);
       });
     }
 
-    // ================= RAZORPAY =================
+    // ================= RESPONSE =================
+    const responseData = {
+      success: true,
+      orderNumber: order.orderNumber,
+      totalAmount: order.totalAmount,
+      subtotal: order.subtotal,
+      taxAmount: order.taxAmount,
+      shippingFee: order.shippingFee,
+      distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+      deliveryType: deliveryType,
+    };
+
+    if (isCOD) {
+      responseData.message = "Order placed with Cash on Delivery";
+      responseData.otp = otp;
+      if (deliveryType === "delivery") {
+        responseData.deliverySlotId = assignedDeliverySlotId;
+        responseData.deliveryDate = assignedDeliveryDate;
+      } else {
+        responseData.pickupInstructions = pickupInstructions;
+      }
+      
+      return res.json(responseData);
+    }
+
+    // Razorpay order for online payment
     const razorpayOrder = await razorpay.orders.create({
       amount: Math.round(order.totalAmount * 100),
       currency: "INR",
@@ -761,29 +780,33 @@ if (process.env.NODE_ENV !== "test") {
       notes: {
         orderNumber: order.orderNumber,
         userId: userId.toString(),
-        distanceKm: distanceKm.toFixed(2),
-        deliveryType: deliveryType, // ✅ Changed from shippingType
+        distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+        deliveryType: deliveryType,
       },
     });
 
-    return res.json({
-      success: true,
-      orderNumber: order.orderNumber,
-      razorpayOrderId: razorpayOrder.id,
-      amount: razorpayOrder.amount,
-      currency: "INR",
-      key: process.env.RAZORPAY_KEY_ID,
-      orderDetails: {
-        subtotal: order.subtotal,
-        taxAmount: order.taxAmount,
-        shippingFee: order.shippingFee,
-        totalAmount: order.totalAmount,
-        distanceKm: distanceKm.toFixed(2),
-        deliveryType: deliveryType, // ✅ Changed from shippingType
-        deliverySlotId: assignedDeliverySlotId,
-        deliveryDate: assignedDeliveryDate,
-      },
-    });
+    responseData.razorpayOrderId = razorpayOrder.id;
+    responseData.amount = razorpayOrder.amount;
+    responseData.currency = "INR";
+    responseData.key = process.env.RAZORPAY_KEY_ID;
+    responseData.orderDetails = {
+      subtotal: order.subtotal,
+      taxAmount: order.taxAmount,
+      shippingFee: order.shippingFee,
+      totalAmount: order.totalAmount,
+      distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+      deliveryType: deliveryType,
+    };
+    
+    if (deliveryType === "delivery") {
+      responseData.orderDetails.deliverySlotId = assignedDeliverySlotId;
+      responseData.orderDetails.deliveryDate = assignedDeliveryDate;
+    } else {
+      responseData.orderDetails.pickupInstructions = pickupInstructions;
+    }
+
+    return res.json(responseData);
+    
   } catch (err) {
     if (t && !t.finished) await t.rollback();
     console.error("PLACE ORDER ERROR:", err);
