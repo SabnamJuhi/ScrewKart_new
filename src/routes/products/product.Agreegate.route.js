@@ -27,7 +27,7 @@ router.post("/products", upload.any(), adminAuth,   allowAdminRoles("superAdmin"
 // router.get("/filter", productController.getFilteredProducts);
 // router.get("/filterd-product", productController.getProductFilters);
 router.get("/filters", getProductFilters);        //  filter metadata
-router.get("/products", optionalAuth, getFilteredProducts); 
+router.get("/products", getFilteredProducts); 
 
 // router.get("/", productController.getAllProductsDetails)
 // router.get("/:id", productController.getProductById)

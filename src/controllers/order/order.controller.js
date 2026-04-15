@@ -443,7 +443,7 @@ exports.placeOrder = async (req, res) => {
       const deliveryRadius = store.deliveryRadius || 8;
       if (distanceKm > deliveryRadius) {
         throw new Error(
-          `❌ Delivery not available to your location (${distanceKm.toFixed(2)}km > ${deliveryRadius}km). ` +
+          `❌ Delivery not available to your location (${distanceKm.toFixed(2)}km > 8km). ` +
           `Please choose "self-pickup" option. You can collect your order from our store at: ${store.address || store.location}`
         );
       }
@@ -554,7 +554,20 @@ exports.placeOrder = async (req, res) => {
       throw new Error("Cash on Delivery is only available for orders below ₹5000");
     }
 
-    const otp = isCOD ? generateOtp() : null;
+    // const otp = isCOD ? generateOtp() : null;
+   
+
+// Generate OTPs based on order type
+let customerDeliveryOtp = null;    // For delivery boy to verify at customer door
+let customerPickupOtp = null;       // For store admin to verify for pickup orders
+let deliveryBoyPickupOtp = null;    // For store admin to verify for delivery boy pickup
+
+if (deliveryType === "delivery") {
+  customerDeliveryOtp = generateOtp();      // Customer receives this for delivery
+  deliveryBoyPickupOtp = generateOtp();     // Delivery boy shows this at store
+} else if (deliveryType === "pickup") {
+  customerPickupOtp = generateOtp();        // Customer shows this at store
+}
 
     // ================= CREATE ORDER =================
     const order = await Order.create(
@@ -568,7 +581,9 @@ exports.placeOrder = async (req, res) => {
         status: isCOD ? "confirmed" : "pending",
         paymentMethod,
         paymentStatus: "unpaid",
-        otp: isCOD ? otp : null,
+         otp: customerDeliveryOtp,                 // For customer delivery
+  pickupOtp: customerPickupOtp,             // For customer pickup
+  deliveryPickupOtp: deliveryBoyPickupOtp, 
         otpVerified: false,
         confirmedAt: isCOD ? new Date() : null,
         deliverySlotId: assignedDeliverySlotId,
@@ -748,65 +763,86 @@ exports.placeOrder = async (req, res) => {
     }
 
     // ================= RESPONSE =================
-    const responseData = {
-      success: true,
-      orderNumber: order.orderNumber,
-      totalAmount: order.totalAmount,
-      subtotal: order.subtotal,
-      taxAmount: order.taxAmount,
-      shippingFee: order.shippingFee,
-      distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
-      deliveryType: deliveryType,
+const responseData = {
+  success: true,
+  orderNumber: order.orderNumber,
+  totalAmount: order.totalAmount,
+  subtotal: order.subtotal,
+  taxAmount: order.taxAmount,
+  shippingFee: order.shippingFee,
+  distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+  deliveryType: deliveryType,
+};
+
+if (isCOD) {
+  if (deliveryType === "delivery") {
+    responseData.message = "Order placed for delivery with Cash on Delivery";
+    responseData.customerOtp = customerDeliveryOtp;        // Customer shows this to delivery boy
+    responseData.deliveryBoyPickupOtp = deliveryBoyPickupOtp; // Delivery boy shows this at store
+    responseData.deliverySlotId = assignedDeliverySlotId;
+    responseData.deliveryDate = assignedDeliveryDate;
+    responseData.instructions = {
+      customer: `Show OTP ${customerDeliveryOtp} to the delivery boy when receiving your order`,
+      deliveryBoy: `Show OTP ${deliveryBoyPickupOtp} at the store to collect the items`
     };
-
-    if (isCOD) {
-      responseData.message = "Order placed with Cash on Delivery";
-      responseData.otp = otp;
-      if (deliveryType === "delivery") {
-        responseData.deliverySlotId = assignedDeliverySlotId;
-        responseData.deliveryDate = assignedDeliveryDate;
-      } else {
-        responseData.pickupInstructions = pickupInstructions;
-      }
-      
-      return res.json(responseData);
-    }
-
-    // Razorpay order for online payment
-    const razorpayOrder = await razorpay.orders.create({
-      amount: Math.round(order.totalAmount * 100),
-      currency: "INR",
-      receipt: order.orderNumber,
-      notes: {
-        orderNumber: order.orderNumber,
-        userId: userId.toString(),
-        distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
-        deliveryType: deliveryType,
-      },
-    });
-
-    responseData.razorpayOrderId = razorpayOrder.id;
-    responseData.amount = razorpayOrder.amount;
-    responseData.currency = "INR";
-    responseData.key = process.env.RAZORPAY_KEY_ID;
-    responseData.orderDetails = {
-      subtotal: order.subtotal,
-      taxAmount: order.taxAmount,
-      shippingFee: order.shippingFee,
-      totalAmount: order.totalAmount,
-      distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
-      deliveryType: deliveryType,
+  } else if (deliveryType === "pickup") {
+    responseData.message = "Order placed for self-pickup with Cash on Delivery";
+    responseData.pickupOtp = customerPickupOtp;  // Customer shows this at store
+    responseData.pickupInstructions = pickupInstructions;
+    responseData.instructions = {
+      customer: `Show OTP ${customerPickupOtp} at the store counter to collect your order`
     };
-    
-    if (deliveryType === "delivery") {
-      responseData.orderDetails.deliverySlotId = assignedDeliverySlotId;
-      responseData.orderDetails.deliveryDate = assignedDeliveryDate;
-    } else {
-      responseData.orderDetails.pickupInstructions = pickupInstructions;
-    }
+  }
+  
+  return res.json(responseData);
+}
 
-    return res.json(responseData);
-    
+// For online payments (Razorpay)
+const razorpayOrder = await razorpay.orders.create({
+  amount: Math.round(order.totalAmount * 100),
+  currency: "INR",
+  receipt: order.orderNumber,
+  notes: {
+    orderNumber: order.orderNumber,
+    userId: userId.toString(),
+    distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+    deliveryType: deliveryType,
+  },
+});
+
+responseData.razorpayOrderId = razorpayOrder.id;
+responseData.amount = razorpayOrder.amount;
+responseData.currency = "INR";
+responseData.key = process.env.RAZORPAY_KEY_ID;
+
+// Add OTPs for online payment orders as well
+if (deliveryType === "delivery") {
+  responseData.customerOtp = customerDeliveryOtp;
+  responseData.deliveryBoyPickupOtp = deliveryBoyPickupOtp;
+  responseData.deliverySlotId = assignedDeliverySlotId;
+  responseData.deliveryDate = assignedDeliveryDate;
+  responseData.instructions = {
+    customer: `Show OTP ${customerDeliveryOtp} to the delivery boy when receiving your order`,
+    deliveryBoy: `Show OTP ${deliveryBoyPickupOtp} at the store to collect the items`
+  };
+} else if (deliveryType === "pickup") {
+  responseData.pickupOtp = customerPickupOtp;
+  responseData.pickupInstructions = pickupInstructions;
+  responseData.instructions = {
+    customer: `Show OTP ${customerPickupOtp} at the store counter to collect your order`
+  };
+}
+
+responseData.orderDetails = {
+  subtotal: order.subtotal,
+  taxAmount: order.taxAmount,
+  shippingFee: order.shippingFee,
+  totalAmount: order.totalAmount,
+  distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+  deliveryType: deliveryType,
+};
+
+return res.json(responseData);
   } catch (err) {
     if (t && !t.finished) await t.rollback();
     console.error("PLACE ORDER ERROR:", err);

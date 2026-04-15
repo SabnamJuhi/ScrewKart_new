@@ -24,15 +24,15 @@ const {deliveryBoyAuth} = require("../../middleware/deliveryBoy.auth.middleware"
 const { getAddressWithGoogleLink } = require("../../controllers/order/google.address.controller");
 
 
+
+
+
+
+
 // Create Order (Requires Login)
 router.post("/place", protected, orderController.placeOrder);
 router.post("/verifyPayment", protected, orderController.verifyRazorpayPayment,);
 
-// Payment Webhook (Public, called by Razorpay/Stripe)
-// router.post('/webhook/payment', orderController.handlePaymentWebhook);
-
-// router.post("/payment/icici/callback", orderController.iciciReturn);
-// router.post("/payment/icici/test", orderController.iciciTestCallback);
 
 
 // --- Delivery Boy Auth ---

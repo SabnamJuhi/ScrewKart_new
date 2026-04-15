@@ -1,50 +1,3 @@
-// const { DataTypes } = require("sequelize");
-// const sequelize = require("../../config/db");
-
-// const Order = sequelize.define("Order", {
-//   orderNumber: {
-//     type: DataTypes.STRING,
-//     allowNull: false,
-//     unique: true,
-//   },
-//   subtotal: {
-//     type: DataTypes.DECIMAL(10, 2),
-//     allowNull: false,
-//   },
-//   shippingFee: {
-//     type: DataTypes.DECIMAL(10, 2),
-//     defaultValue: 0.0,
-//   },
-//   totalAmount: {
-//     type: DataTypes.DECIMAL(10, 2),
-//     allowNull: false,
-//   },
-//   taxAmount: {
-//   type: DataTypes.DECIMAL(10, 2),
-//   defaultValue: 0.0,
-//   },
-//   status: {
-//     type: DataTypes.ENUM("pending", "confirmed", "shipped", "delivered", "cancelled"),
-//     defaultValue: "pending",
-//   },
-//   paymentStatus: {
-//     type: DataTypes.ENUM("unpaid", "paid", "failed", "refunded"),
-//     defaultValue: "unpaid",
-//   },
-//   paymentMethod: {
-//     type: DataTypes.STRING, // e.g., 'Razorpay', 'Stripe', 'COD'
-//   },
-//   transactionId: {
-//     type: DataTypes.STRING,
-//     allowNull: true,
-//   },
-// });
-
-
-
-
-
-
 // module.exports = Order;
 
 const { DataTypes } = require("sequelize");
@@ -82,8 +35,11 @@ const Order = sequelize.define(
       type: DataTypes.ENUM(
         "pending",
         "confirmed",
+        "picking",
+        "packed",
         "processing",
         "shipped",
+        "dispatched",
         "out_for_delivery",
         "delivered",
         "completed",
@@ -121,12 +77,17 @@ const Order = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
-    // NEW → OTP expiry timestamp
-    // otpExpiresAt: {
-    //   type: DataTypes.DATE,
-    //   allowNull: true,
-    // },
+    pickupOtp: { type: DataTypes.STRING },
+    deliveryPickupOtp: { type: DataTypes.STRING },
     otpVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    pickupOtpVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    }, 
+    deliveryPickupOtpVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
@@ -160,8 +121,12 @@ const Order = sequelize.define(
 
     // --- Timeline Tracking ---
     confirmedAt: DataTypes.DATE,
+    pickingAt: DataTypes.DATE,
+    packedAt: DataTypes.DATE,
     shippedAt: DataTypes.DATE,
+    outForDeliveryAt: DataTypes.DATE,
     deliveredAt: DataTypes.DATE,
+    dispatchedAt: DataTypes.DATE,
     completedAt: DataTypes.DATE,
     cancelledAt: DataTypes.DATE,
     refundedAt: DataTypes.DATE,
