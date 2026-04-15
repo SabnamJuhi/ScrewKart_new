@@ -10,10 +10,10 @@ const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
 
 // ============ STORE ADMIN ROUTES ============
 // Verify delivery boy OTP (when delivery boy picks up items)
-router.post("/store/verify-delivery-boy-pickup", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, storePickupController.verifyDeliveryBoyPickup);
+router.post("/store/verify-delivery-boy-pickup/:orderNumber", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, storePickupController.verifyDeliveryBoyPickup);
 
 // Verify customer OTP (when customer picks up items)
-router.post("/store/verify-customer-pickup", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, storePickupController.verifyCustomerPickup);
+router.post("/store/verify-customer-pickup/:orderNumber", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, storePickupController.verifyCustomerPickup);
 
 // Get all pending pickups
 router.get("/store/pending-pickups", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, storePickupController.getPendingPickups);

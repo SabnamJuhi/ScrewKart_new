@@ -573,6 +573,7 @@ if (deliveryType === "delivery") {
     const order = await Order.create(
       {
         userId,
+        storeId,
         orderNumber: generateOrderNumber(),
         subtotal: Math.round(subtotal),
         taxAmount: Math.round(totalTax),

@@ -90,15 +90,15 @@ ProductMeasurement.belongsTo(ProductVariant, {foreignKey: "variantId", as: "vari
 //   foreignKey: "storeId",
 //   as: "store",
 // });
-// Store.hasMany(Order, {
-//   foreignKey: "storeId",
-//   as: "orders",
-// });
+Store.hasMany(Order, {
+  foreignKey: "storeId",
+  as: "orders",
+});
 
-// Order.belongsTo(Store, {
-//   foreignKey: "storeId",
-//   as: "store",
-// });
+Order.belongsTo(Store, {
+  foreignKey: "storeId",
+  as: "store",
+});
 Store.hasMany(StoreInventory, {foreignKey: "storeId", as: "inventories"});
 
 StoreInventory.belongsTo(Store, {foreignKey: "storeId", as: "store"});

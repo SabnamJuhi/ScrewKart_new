@@ -11,6 +11,11 @@ const Order = sequelize.define(
       allowNull: false,
       unique: true,
     },
+    storeId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: "store_id", // 👈 VERY IMPORTANT (match DB column)
+    },
 
     // --- Amounts ---
     subtotal: {
@@ -86,7 +91,7 @@ const Order = sequelize.define(
     pickupOtpVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
-    }, 
+    },
     deliveryPickupOtpVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,

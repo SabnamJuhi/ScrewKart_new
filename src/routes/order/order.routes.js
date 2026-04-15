@@ -2,26 +2,24 @@ const express = require("express");
 const router = express.Router();
 const orderController = require("../../controllers/order/order.controller");
 const { protected } = require("../../middleware/user.logout.middleware");
-const {updateOrderStatus, markOutForDelivery} = require("../../controllers/adminUpdateOrderStatusApi/updateOrderStatus.controller");
-const {sendDeliveryOtp} = require("../../controllers/adminUpdateOrderStatusApi/sendDeliveryOtp.controller");
-// const { verifyDeliveryOtp} = require("../../controllers/ADMIN-Update Order Status API/verifyDeliveryOtp.controller");
+
 const {getActiveOrders} = require("../../controllers/userMyOrdersApi/getActiveOrders.controller");
 const {getCompletedOrders} = require("../../controllers/userMyOrdersApi/getCompletedOrders.controller");
 const {cancelOrder} = require("../../controllers/userMyOrdersApi/cancelOrder.controller");
 const {returnOrder} = require("../../controllers/userMyOrdersApi/returnOrder.controller");
 const {completeRefund} = require("../../controllers/adminUpdateOrderStatusApi/completeRefund.controller");
-const {markDeliveredCOD} = require("../../controllers/codDeliveryPaymentCompletionApis/markDeliveredCOD.controller");
-const {collectCODPayment} = require("../../controllers/codDeliveryPaymentCompletionApis/collectCODPayment.controller");
+
 const {getAdminActiveOrders} = require("../../controllers/adminGetOrdersHistory/getAdminActiveOrders.controller");
 const {getAdminOrderHistory} = require("../../controllers/adminGetOrdersHistory/getAdminOrderHistory.controller");
 const { getOrderHistory} = require("../../controllers/userMyOrdersApi/getOrderHistory.controller");
 const {addAddress,getUserAddresses,updateAddress,deleteAddress,setDefaultAddress,getAddressById} = require("../../controllers/order/address.crud.controller");
 const adminAuthMiddleware = require("../../middleware/admin.auth.middleware");
-// const {createDeliveryBoy, updateDeliveryBoy, deleteDeliveryBoy, } = require("../../controllers/order/deliveryBoy.CRUD.controller");
-// const {confirmCodPayment} = require("../../controllers/ADMIN-Update Order Status API/confirmCodPayment.controller");
-const {getMyAssignedOrders, loginDeliveryBoy, getAllDeliveryBoys, registerDeliveryBoy, updateDeliveryBoy, deleteDeliveryBoy, verifyDeliveryOtp, confirmCodPayment} = require("../../controllers/deliveryBoy/deliveryBoy.controller");
+
+const { loginDeliveryBoy, getAllDeliveryBoys, registerDeliveryBoy, updateDeliveryBoy, deleteDeliveryBoy, } = require("../../controllers/deliveryBoy/deliveryBoy.controller");
 const {deliveryBoyAuth} = require("../../middleware/deliveryBoy.auth.middleware");
 const { getAddressWithGoogleLink } = require("../../controllers/order/google.address.controller");
+const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
+const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
 
 
 
@@ -41,20 +39,7 @@ router.post("/login", loginDeliveryBoy);
 router.get("/deliveryBoys", adminAuthMiddleware, getAllDeliveryBoys);
 router.patch("/deliveryBoys/:id", adminAuthMiddleware, updateDeliveryBoy);
 router.delete("/deliveryBoys/:id",adminAuthMiddleware, deleteDeliveryBoy);
-router.patch("/:orderNumber/shipped", adminAuthMiddleware, updateOrderStatus);
-router.patch("/:orderNumber/outForDelivery", adminAuthMiddleware, markOutForDelivery);
-// --- Orders assigned to delivery boy ---
-router.get("/myOrders", deliveryBoyAuth, getMyAssignedOrders);
-// --- OTP Verification ---
-router.post("/verifyOtp", deliveryBoyAuth, verifyDeliveryOtp);
-// --- COD payment confirmation ---
-router.post("/confirmCodPayment", deliveryBoyAuth, confirmCodPayment);
 
-//ADMIN — Update Order Status API
-// router.patch("/admin/:orderNumber/status", updateOrderStatus);
-// router.post("/admin/:orderNumber/send-otp", adminAuthMiddleware, sendDeliveryOtp);
-// router.post("/admin/verify-delivery-otp", verifyDeliveryOtp);
-// router.patch("/admin/confirm-cod-payment", confirmCodPayment);
 
 
 
@@ -68,14 +53,12 @@ router.post("/:orderNumber/cancel", protected, cancelOrder);
 router.post("/:orderNumber/return", returnOrder);
 router.post("/admin/:orderNumber/refund", completeRefund);
 
-// COD flow
-router.patch("/admin/:orderNumber/markDelivered", markDeliveredCOD);
-router.patch("/admin/:orderNumber/collectCod", collectCODPayment);
+
 
 //Admin-get-Orders
 // ADMIN — Orders viewing
-router.get("/admin/active", adminAuthMiddleware, getAdminActiveOrders);
-router.get("/admin/history", adminAuthMiddleware, getAdminOrderHistory);
+router.get("/admin/active", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), getAdminActiveOrders);
+router.get("/admin/history", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), getAdminOrderHistory);
 
 //Adress APIS
 router.post("/user/address", protected, addAddress);
@@ -110,9 +93,3 @@ router.post(
 );
 
 module.exports = router;
-
-// 1. User creates order → status: pending, paymentStatus: unpaid
-// 2. ICICI success → status: confirmed, paymentStatus: paid
-// 3. Admin ships → status: shipped
-// 4. Delivered → status: delivered + OTP sent
-// 5. OTP verified → status: completed

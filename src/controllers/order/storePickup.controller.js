@@ -14,7 +14,6 @@ function generateOtp() {
 exports.verifyDeliveryBoyPickup = async (req, res) => {
   try {
     const { orderNumber, otp } = req.body;
-    const adminStoreId = req.admin?.storeId; // From checkStoreAccess middleware
 
     if (!orderNumber || !otp) {
       return res.status(400).json({
@@ -23,9 +22,12 @@ exports.verifyDeliveryBoyPickup = async (req, res) => {
       });
     }
 
-    const order = await Order.findOne({ 
+    // ✅ SINGLE FULL FETCH (needed for business logic)
+    const order = await Order.findOne({
       where: { orderNumber },
-      include: [{ model: Store, as: "store", attributes: ["id", "name"] }]
+      include: [
+        { model: Store, as: "store", attributes: ["id", "name"] }
+      ]
     });
 
     if (!order) {
@@ -35,31 +37,24 @@ exports.verifyDeliveryBoyPickup = async (req, res) => {
       });
     }
 
-    // Super Admin can access any store, Store Admin only their store
-    if (req.admin?.role !== "superAdmin" && order.storeId !== adminStoreId) {
-      return res.status(403).json({
-        success: false,
-        message: "You don't have access to this order"
-      });
-    }
+    // ❌ NO NEED store check (already done in middleware)
 
-    // Verify it's a delivery order
+    // ================= BUSINESS LOGIC =================
+
     if (order.deliveryType !== "delivery") {
       return res.status(400).json({
         success: false,
-        message: "This is a pickup order. Customer should verify pickup OTP."
+        message: "This is a pickup order"
       });
     }
 
-    // Check if already verified
     if (order.deliveryPickupOtpVerified) {
       return res.status(400).json({
         success: false,
-        message: "Items already handed over to delivery boy for this order"
+        message: "Items already handed over"
       });
     }
 
-    // Verify OTP
     if (order.deliveryPickupOtp !== otp) {
       return res.status(400).json({
         success: false,
@@ -67,7 +62,6 @@ exports.verifyDeliveryBoyPickup = async (req, res) => {
       });
     }
 
-    // Update order
     await order.update({
       deliveryPickupOtpVerified: true,
       storeHandoverAt: new Date(),
@@ -76,7 +70,7 @@ exports.verifyDeliveryBoyPickup = async (req, res) => {
       outForDeliveryAt: new Date()
     });
 
-    res.json({
+    return res.json({
       success: true,
       message: "Items handed over to delivery boy successfully",
       data: {
@@ -86,6 +80,7 @@ exports.verifyDeliveryBoyPickup = async (req, res) => {
         nextStep: "Delivery boy can now deliver to customer"
       }
     });
+
   } catch (err) {
     console.error("Verify delivery boy pickup error:", err);
     res.status(500).json({
@@ -102,7 +97,6 @@ exports.verifyDeliveryBoyPickup = async (req, res) => {
 exports.verifyCustomerPickup = async (req, res) => {
   try {
     const { orderNumber, otp } = req.body;
-    const adminStoreId = req.admin?.storeId;
 
     if (!orderNumber || !otp) {
       return res.status(400).json({
@@ -111,9 +105,11 @@ exports.verifyCustomerPickup = async (req, res) => {
       });
     }
 
-    const order = await Order.findOne({ 
+    const order = await Order.findOne({
       where: { orderNumber },
-      include: [{ model: Store, as: "store", attributes: ["id", "name"] }]
+      include: [
+        { model: Store, as: "store", attributes: ["id", "name"] }
+      ]
     });
 
     if (!order) {
@@ -123,31 +119,22 @@ exports.verifyCustomerPickup = async (req, res) => {
       });
     }
 
-    // Store access check
-    if (req.admin?.role !== "superAdmin" && order.storeId !== adminStoreId) {
-      return res.status(403).json({
-        success: false,
-        message: "You don't have access to this order"
-      });
-    }
+    // ❌ Store check already handled by middleware
 
-    // Verify it's a pickup order
     if (order.deliveryType !== "pickup") {
       return res.status(400).json({
         success: false,
-        message: "This is a delivery order. Delivery boy should verify pickup OTP."
+        message: "This is a delivery order"
       });
     }
 
-    // Check if already verified
     if (order.pickupOtpVerified) {
       return res.status(400).json({
         success: false,
-        message: "Items already handed over to customer"
+        message: "Items already handed over"
       });
     }
 
-    // Verify OTP
     if (order.pickupOtp !== otp) {
       return res.status(400).json({
         success: false,
@@ -155,7 +142,6 @@ exports.verifyCustomerPickup = async (req, res) => {
       });
     }
 
-    // Update order
     await order.update({
       pickupOtpVerified: true,
       storeHandoverAt: new Date(),
@@ -165,7 +151,7 @@ exports.verifyCustomerPickup = async (req, res) => {
       paymentStatus: "paid"
     });
 
-    res.json({
+    return res.json({
       success: true,
       message: "Order picked up by customer successfully",
       data: {
@@ -174,6 +160,7 @@ exports.verifyCustomerPickup = async (req, res) => {
         pickupTime: order.storeHandoverAt
       }
     });
+
   } catch (err) {
     console.error("Verify customer pickup error:", err);
     res.status(500).json({
@@ -187,27 +174,33 @@ exports.verifyCustomerPickup = async (req, res) => {
 /**
  * STORE ADMIN: Get all pending pickups for their store
  */
+const { Op } = require("sequelize");
+
 exports.getPendingPickups = async (req, res) => {
   try {
     const adminStoreId = req.admin?.storeId;
     const isSuperAdmin = req.admin?.role === "superAdmin";
 
-    // Build where condition based on admin type
-    const storeCondition = isSuperAdmin ? {} : { storeId: adminStoreId };
+    // ✅ Store condition
+    const storeCondition = isSuperAdmin
+      ? {}
+      : { storeId: adminStoreId };
 
-    // Pending delivery boy pickups
+    // ================= DELIVERY BOY PICKUPS =================
     const pendingDeliveryPickups = await Order.findAll({
       where: {
         ...storeCondition,
         deliveryType: "delivery",
         deliveryPickupOtpVerified: false,
-        status: ["confirmed", "packed"]
+        status: {
+          [Op.in]: ["confirmed", "packed"]
+        }
       },
       include: [
-        { 
-          model: DeliveryBoy, 
-          as: "deliveryBoy", 
-          attributes: ["name", "mobile"] 
+        {
+          model: DeliveryBoy,
+          as: "deliveryBoy",
+          attributes: ["id", "name", "mobile"]
         },
         {
           model: Store,
@@ -215,17 +208,28 @@ exports.getPendingPickups = async (req, res) => {
           attributes: ["id", "name"]
         }
       ],
-      attributes: ["orderNumber", "deliveryPickupOtp", "deliveryDate", "deliverySlotId", "totalAmount"],
-      order: [["deliveryDate", "ASC"], ["deliverySlotId", "ASC"]]
+      attributes: [
+        "orderNumber",
+        "deliveryPickupOtp",
+        "deliveryDate",
+        "deliverySlotId",
+        "totalAmount"
+      ],
+      order: [
+        ["deliveryDate", "ASC"],
+        ["deliverySlotId", "ASC"]
+      ]
     });
 
-    // Pending customer pickups
+    // ================= CUSTOMER PICKUPS =================
     const pendingCustomerPickups = await Order.findAll({
       where: {
         ...storeCondition,
         deliveryType: "pickup",
         pickupOtpVerified: false,
-        status: ["confirmed", "packed"]
+        status: {
+          [Op.in]: ["confirmed", "packed"]
+        }
       },
       include: [
         {
@@ -234,23 +238,39 @@ exports.getPendingPickups = async (req, res) => {
           attributes: ["id", "name"]
         }
       ],
-      attributes: ["orderNumber", "pickupOtp", "createdAt", "totalAmount"],
+      attributes: [
+        "orderNumber",
+        "pickupOtp",
+        "createdAt",
+        "totalAmount"
+      ],
       order: [["createdAt", "ASC"]]
     });
 
-    res.json({
+    // ================= RESPONSE =================
+    return res.json({
       success: true,
       data: {
-        storeInfo: isSuperAdmin ? "All Stores" : `Store ID: ${adminStoreId}`,
+        role: isSuperAdmin ? "superAdmin" : "storeAdmin",
+        storeInfo: isSuperAdmin
+          ? "All Stores"
+          : `Store ID: ${adminStoreId}`,
+
         deliveryBoyPickups: pendingDeliveryPickups.map(order => ({
           orderNumber: order.orderNumber,
           otp: order.deliveryPickupOtp,
-          deliveryBoyName: order.deliveryBoy?.name,
-          deliveryBoyMobile: order.deliveryBoy?.mobile,
+          deliveryBoy: order.deliveryBoy
+            ? {
+                id: order.deliveryBoy.id,
+                name: order.deliveryBoy.name,
+                mobile: order.deliveryBoy.mobile
+              }
+            : null,
           deliveryDate: order.deliveryDate,
           totalAmount: order.totalAmount,
           storeName: order.store?.name
         })),
+
         customerPickups: pendingCustomerPickups.map(order => ({
           orderNumber: order.orderNumber,
           otp: order.pickupOtp,
@@ -260,6 +280,7 @@ exports.getPendingPickups = async (req, res) => {
         }))
       }
     });
+
   } catch (err) {
     console.error("Get pending pickups error:", err);
     res.status(500).json({

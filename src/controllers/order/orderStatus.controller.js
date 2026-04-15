@@ -31,19 +31,6 @@ async function notifyDeliveryBoy(deliveryBoy, order) {
   console.log(`Notification: Delivery boy ${deliveryBoy.name} assigned to order ${order.orderNumber}`);
 }
 
-/**
- * Helper function to check store access
- */
-function hasStoreAccess(req, orderStoreId) {
-  const isSuperAdmin = req.admin?.role === "superAdmin";
-  const adminStoreId = req.admin?.storeId;
-  
-  // Super Admin can access all stores
-  if (isSuperAdmin) return true;
-  
-  // Store Admin can only access their own store
-  return orderStoreId === adminStoreId;
-}
 
 /**
  * ADMIN: Update order status with proper flow
@@ -53,27 +40,20 @@ exports.updateOrderStatus = async (req, res) => {
     const { orderNumber } = req.params;
     const { status, notes } = req.body;
 
-    const order = await Order.findOne({ 
+    const order = await Order.findOne({
       where: { orderNumber },
       include: [{ model: Store, as: "store", attributes: ["id", "name"] }]
     });
-    
+
     if (!order) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Order not found" 
-      });
-    }
-
-    // ✅ Store access check
-    if (!hasStoreAccess(req, order.storeId)) {
-      return res.status(403).json({
+      return res.status(404).json({
         success: false,
-        message: "You don't have access to orders from this store"
+        message: "Order not found"
       });
     }
 
-    // Define allowed status transitions
+    // ❌ NO store check here anymore
+
     const allowedTransitions = {
       confirmed: ["picking", "cancelled"],
       picking: ["packed", "cancelled"],
@@ -83,17 +63,18 @@ exports.updateOrderStatus = async (req, res) => {
       delivered: ["completed"],
     };
 
-    // Check if transition is allowed
-    if (allowedTransitions[order.status] && !allowedTransitions[order.status].includes(status)) {
+    if (
+      allowedTransitions[order.status] &&
+      !allowedTransitions[order.status].includes(status)
+    ) {
       return res.status(400).json({
         success: false,
         message: `Cannot transition from ${order.status} to ${status}`
       });
     }
 
-    // Update timeline fields based on status
     const updateData = { status };
-    
+
     switch (status) {
       case "picking":
         updateData.pickingAt = new Date();
@@ -116,10 +97,12 @@ exports.updateOrderStatus = async (req, res) => {
         break;
       case "cancelled":
         updateData.cancelledAt = new Date();
+
         if (order.deliverySlotId && order.status !== "dispatched") {
           const slot = await DeliverySlot.findByPk(order.deliverySlotId);
           if (slot) {
             await slot.decrement("currentOrders");
+
             if (slot.currentOrders - 1 < slot.maxCapacity) {
               await slot.update({ status: "available" });
             }
@@ -129,7 +112,6 @@ exports.updateOrderStatus = async (req, res) => {
     }
 
     await order.update(updateData);
-    await sendOrderStatusNotification(order, status, notes);
 
     res.json({
       success: true,
@@ -141,11 +123,12 @@ exports.updateOrderStatus = async (req, res) => {
         ...updateData
       }
     });
+
   } catch (err) {
     console.error("Update order status error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: err.message 
+    res.status(500).json({
+      success: false,
+      message: err.message
     });
   }
 };
@@ -155,8 +138,8 @@ exports.updateOrderStatus = async (req, res) => {
  */
 exports.assignDeliveryBoy = async (req, res) => {
   try {
-    const { orderNumber } = req.params;
     const { deliveryBoyId } = req.body;
+    const order = req.order; // ✅ from middleware
 
     if (!deliveryBoyId) {
       return res.status(400).json({
@@ -165,36 +148,15 @@ exports.assignDeliveryBoy = async (req, res) => {
       });
     }
 
-    const order = await Order.findOne({ 
-      where: { orderNumber },
-      include: [{ model: Store, as: "store", attributes: ["id", "name"] }]
-    });
-    
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found"
-      });
-    }
-
-    // ✅ Store access check
-    if (!hasStoreAccess(req, order.storeId)) {
-      return res.status(403).json({
-        success: false,
-        message: "You don't have access to orders from this store"
-      });
-    }
-    
     const deliveryBoy = await DeliveryBoy.findByPk(deliveryBoyId);
-    
+
     if (!deliveryBoy) {
       return res.status(404).json({
         success: false,
         message: "Delivery boy not found"
       });
     }
-    
-    // Only packed orders can be dispatched
+
     if (order.status !== "packed") {
       return res.status(400).json({
         success: false,
@@ -202,25 +164,24 @@ exports.assignDeliveryBoy = async (req, res) => {
       });
     }
 
-    // Update order status to dispatched and assign delivery boy
     await order.update({
       status: "dispatched",
-      deliveryBoyId: deliveryBoyId,
+      deliveryBoyId,
       dispatchedAt: new Date()
     });
 
     await notifyDeliveryBoy(deliveryBoy, order);
 
-    res.json({
+    return res.json({
       success: true,
       message: `Order dispatched to delivery boy: ${deliveryBoy.name}`,
-      data: { 
+      data: {
         order: {
           orderNumber: order.orderNumber,
           status: order.status,
           dispatchedAt: order.dispatchedAt,
           storeName: order.store?.name
-        }, 
+        },
         deliveryBoy: {
           id: deliveryBoy.id,
           name: deliveryBoy.name,
@@ -228,11 +189,12 @@ exports.assignDeliveryBoy = async (req, res) => {
         }
       }
     });
+
   } catch (err) {
     console.error("Assign delivery boy error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: err.message 
+    res.status(500).json({
+      success: false,
+      message: err.message
     });
   }
 };
