@@ -19,8 +19,8 @@ const adminAuthMiddleware = require('../../middleware/admin.auth.middleware');
 // router.post('/bulk-delete', adminAuthMiddleware, faqController.bulkDeleteFAQs);
 
 router.post("/", adminAuthMiddleware,faqController.createFAQ);
-router.get("/", adminAuthMiddleware, faqController.getAllFAQs);
-router.get("/:id", adminAuthMiddleware, faqController.getFAQById);
+router.get("/", faqController.getAllFAQs);
+router.get("/:id", faqController.getFAQById);
 router.put("/:id", adminAuthMiddleware, faqController.updateFAQ);
 router.delete("/:id", adminAuthMiddleware,  faqController.deleteFAQ);
 
