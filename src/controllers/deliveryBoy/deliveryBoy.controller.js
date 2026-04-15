@@ -230,13 +230,18 @@ exports.deleteDeliveryBoy = async (req, res) => {
   }
 };
 
+/**
+ * Get assigned orders for delivery boy with all OTP information
+ */
 exports.getMyAssignedOrders = async (req, res) => {
   try {
     const paginationOptions = getPaginationOptions(req.query);
+    const deliveryBoyId = req.deliveryBoy.id;
+    
     const orders = await Order.findAndCountAll({
       where: {
-        deliveryBoyId: req.deliveryBoy.id,
-        status: "out_for_delivery",
+        deliveryBoyId: deliveryBoyId,
+        status: ["dispatched", "out_for_delivery"],
       },
       include: [
         {
@@ -256,78 +261,131 @@ exports.getMyAssignedOrders = async (req, res) => {
             "formattedAddress",
           ],
         },
+        {
+          model: Store,
+          as: "store",
+          attributes: [
+            "id",
+            "name",
+            "latitude",
+            "longitude",
+            "address",
+            "phoneNumber",
+            "openTime",
+            "closeTime"
+          ],
+        },
+        {
+          model: OrderItem,
+          as: "OrderItems",
+          attributes: ["productName", "quantity", "totalPrice"]
+        }
       ],
-      order: [["createdAt", "DESC"]],
+      order: [["deliveryDate", "ASC"], ["createdAt", "DESC"]],
       distinct: true,
       ...paginationOptions,
     });
-    // Transform orders to include navigation links
-    const ordersWithLinks = orders.rows.map((order) => {
+    
+    // Transform orders to include both OTPs
+    const ordersWithDetails = orders.rows.map((order) => {
       const orderJson = order.toJSON();
       const address = orderJson.address;
+      const store = orderJson.store;
 
+      // Generate customer address navigation links
       if (address) {
-        // Generate Google Maps links based on available data
         if (address.latitude && address.longitude) {
-          // Exact coordinates available - best for navigation
           address.navigationLinks = {
             googleMaps: `https://www.google.com/maps?q=${address.latitude},${address.longitude}`,
-            googleMapsDirections: `https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`,
+            directions: `https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`,
             waze: `https://waze.com/ul?ll=${address.latitude},${address.longitude}&navigate=yes`,
-            appleMaps: `https://maps.apple.com/?ll=${address.latitude},${address.longitude}&q=${encodeURIComponent(address.formattedAddress || "Delivery Location")}`,
-            uber: `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${address.latitude}&dropoff[longitude]=${address.longitude}&dropoff[nickname]=${encodeURIComponent(address.formattedAddress || "Delivery")}`,
           };
-          // Also add a simple clickable link
-          address.googleMapsLink = `https://www.google.com/maps?q=${address.latitude},${address.longitude}`;
-        } else if (address.placeId) {
-          // Has Google Place ID - can use place-based link
-          address.navigationLinks = {
-            googleMaps: `https://www.google.com/maps/place/?q=place_id:${address.placeId}`,
-            googleMapsDirections: `https://www.google.com/maps/dir/?api=1&destination_place_id=${address.placeId}`,
-          };
-          address.googleMapsLink = `https://www.google.com/maps/place/?q=place_id:${address.placeId}`;
         } else if (address.formattedAddress) {
-          // Fallback to text search
           const encodedAddress = encodeURIComponent(address.formattedAddress);
           address.navigationLinks = {
             googleMaps: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-            googleMapsDirections: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
-          };
-          address.googleMapsLink = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
-        } else {
-          // Last resort - construct from components
-          const addressString = `${address.addressLine}, ${address.city}, ${address.state} ${address.zipCode}, ${address.country}`;
-          const encodedAddress = encodeURIComponent(addressString);
-          address.navigationLinks = {
-            googleMaps: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-            googleMapsDirections: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
-          };
-          address.googleMapsLink = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
-        }
-
-        // Add coordinates object for easy access
-        if (address.latitude && address.longitude) {
-          address.coordinates = {
-            lat: parseFloat(address.latitude),
-            lng: parseFloat(address.longitude),
+            directions: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
           };
         }
+      }
 
-        // Add a simple method to get best available link
-        address.getBestNavigationLink = () => {
-          if (address.latitude && address.longitude) {
-            return `https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`;
+      // Generate store location links for dispatched orders
+      let storeLocation = null;
+      if (order.status === "dispatched" && store && store.latitude && store.longitude) {
+        storeLocation = {
+          name: store.name,
+          address: store.address,
+          phoneNumber: store.phoneNumber,
+          coordinates: {
+            lat: store.latitude,
+            lng: store.longitude
+          },
+          navigationLinks: {
+            googleMaps: `https://www.google.com/maps?q=${store.latitude},${store.longitude}`,
+            directions: `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`,
+            waze: `https://waze.com/ul?ll=${store.latitude},${store.longitude}&navigate=yes`,
           }
-          return address.googleMapsLink;
         };
       }
 
-      return orderJson;
+      // ✅ Include BOTH OTPs in the response
+      return {
+        orderNumber: order.orderNumber,
+        status: order.status,
+        deliveryDate: order.deliveryDate,
+        deliverySlot: order.deliverySlotId,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        
+        // ✅ ALL OTPs for this order
+        otpInfo: {
+          // OTP for store pickup (already verified for out_for_delivery orders)
+          deliveryPickupOtp: order.deliveryPickupOtp,
+          deliveryPickupOtpVerified: order.deliveryPickupOtpVerified === 1,
+          
+          // OTP for customer delivery (current active OTP)
+          customerDeliveryOtp: order.otp,
+          customerDeliveryOtpVerified: order.otpVerified === 1,
+          
+          // Pickup order OTP (if applicable)
+          pickupOtp: order.pickupOtp,
+          pickupOtpVerified: order.pickupOtpVerified === 1,
+          
+          // Which OTP is currently needed
+          currentRequiredOtp: order.status === "dispatched" ? order.deliveryPickupOtp : order.otp,
+          currentStep: order.status === "dispatched" ? "STORE_PICKUP" : "CUSTOMER_DELIVERY",
+        },
+        
+        // Store location (only for dispatched orders)
+        storeLocation: storeLocation,
+        
+        // Customer address
+        address: address,
+        
+        // Order items
+        items: order.OrderItems,
+        
+        // Timeline
+        timeline: {
+          dispatchedAt: order.dispatchedAt,
+          outForDeliveryAt: order.outForDeliveryAt,
+          deliveredAt: order.deliveredAt
+        }
+      };
     });
+    
+    // Get summary statistics
+    const summary = {
+      totalAssigned: orders.count,
+      outForDelivery: orders.rows.filter(o => o.status === "out_for_delivery").length,
+      dispatched: orders.rows.filter(o => o.status === "dispatched").length,
+      todaysDeliveries: orders.rows.filter(o => o.deliveryDate === new Date().toISOString().split('T')[0]).length
+    };
+    
     const response = formatPagination(
       {
-        count: orders.count, // ✅ FIXED
-        rows: ordersWithLinks,
+        count: orders.count,
+        rows: ordersWithDetails,
       },
       paginationOptions.currentPage,
       paginationOptions.limit,
@@ -335,9 +393,12 @@ exports.getMyAssignedOrders = async (req, res) => {
 
     return res.json({
       success: true,
+      summary: summary,
       ...response,
     });
+    
   } catch (err) {
+    console.error("Get my assigned orders error:", err);
     res.status(500).json({
       success: false,
       message: err.message,
