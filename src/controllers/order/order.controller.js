@@ -110,7 +110,7 @@ exports.placeOrder = async (req, res) => {
 
     // ================= BUY NOW =================
     if (buyNow) {
-      const { productId, variantId, quantity } = buyNow;
+      const { productId, variantId, quantity, storeId: requestStoreId } = buyNow;
 
       const product = await Product.findByPk(productId, {
         include: [
@@ -166,16 +166,17 @@ exports.placeOrder = async (req, res) => {
 
       if (!product || !variant) throw new Error("Invalid Buy Now product");
 
-      storeId = variant.storeId || product.storeId;
-
-      if (!storeId) throw new Error("Store information missing");
+      if (!requestStoreId) {
+  throw new Error("StoreId is required for Buy Now");
+}  
+storeId = requestStoreId;
 
       // Get store inventory
       const storeInventory = await StoreInventory.findOne({
-        where: {
-          variantId: variant.id,
-          storeId: storeId,
-        },
+         where: {
+    variantId: variant.id,
+    storeId: storeId,
+  },
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
