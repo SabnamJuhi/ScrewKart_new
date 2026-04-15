@@ -81,15 +81,6 @@ ProductVariant.hasMany(ProductMeasurement, {foreignKey: "variantId",as: "measure
 
 ProductMeasurement.belongsTo(ProductVariant, {foreignKey: "variantId", as: "variant"});
 
-// Store.hasMany(Product, {
-//   foreignKey: "storeId",
-//   as: "products",
-// });
-
-// Product.belongsTo(Store, {
-//   foreignKey: "storeId",
-//   as: "store",
-// });
 Store.hasMany(Order, {
   foreignKey: "storeId",
   as: "orders",

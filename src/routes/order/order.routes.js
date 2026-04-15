@@ -4,8 +4,9 @@ const orderController = require("../../controllers/order/order.controller");
 const { protected } = require("../../middleware/user.logout.middleware");
 
 const {getActiveOrders} = require("../../controllers/userMyOrdersApi/getActiveOrders.controller");
+const {getCancelledOrders} = require("../../controllers/userMyOrdersApi/getCancelOrder.controller")
 const {getCompletedOrders} = require("../../controllers/userMyOrdersApi/getCompletedOrders.controller");
-const {cancelOrder} = require("../../controllers/userMyOrdersApi/cancelOrder.controller");
+const {cancelOrder, cancelPickupOrder, adminCancelOrder} = require("../../controllers/userMyOrdersApi/cancelOrder.controller");
 const {returnOrder} = require("../../controllers/userMyOrdersApi/returnOrder.controller");
 const {completeRefund} = require("../../controllers/adminUpdateOrderStatusApi/completeRefund.controller");
 
@@ -16,10 +17,10 @@ const {addAddress,getUserAddresses,updateAddress,deleteAddress,setDefaultAddress
 const adminAuthMiddleware = require("../../middleware/admin.auth.middleware");
 
 const { loginDeliveryBoy, getAllDeliveryBoys, registerDeliveryBoy, updateDeliveryBoy, deleteDeliveryBoy, } = require("../../controllers/deliveryBoy/deliveryBoy.controller");
-const {deliveryBoyAuth} = require("../../middleware/deliveryBoy.auth.middleware");
 const { getAddressWithGoogleLink } = require("../../controllers/order/google.address.controller");
 const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
 const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
+
 
 
 
@@ -47,11 +48,17 @@ router.delete("/deliveryBoys/:id",adminAuthMiddleware, deleteDeliveryBoy);
 router.get("/active", protected, getActiveOrders);
 router.get("/completed", protected, getCompletedOrders);
 router.get("/history", protected, getOrderHistory);
+router.get("/canceled", protected, getCancelledOrders)
 
 //cancel/return
 router.post("/:orderNumber/cancel", protected, cancelOrder);
 router.post("/:orderNumber/return", returnOrder);
 router.post("/admin/:orderNumber/refund", completeRefund);
+//cancel order by pickup customer
+router.post("/:orderNumber/cancelForPickup", cancelPickupOrder)
+
+//Cancel order by Admin
+router.post("/:orderNumber/cancelByAdmin", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, adminCancelOrder)
 
 
 
