@@ -230,268 +230,268 @@ exports.deleteDeliveryBoy = async (req, res) => {
   }
 };
 
-/**
- * Get assigned orders for delivery boy with all OTP information
- */
-exports.getMyAssignedOrders = async (req, res) => {
-  try {
-    const paginationOptions = getPaginationOptions(req.query);
-    const deliveryBoyId = req.deliveryBoy.id;
+// /**
+//  * Get assigned orders for delivery boy with all OTP information
+//  */
+// exports.getMyAssignedOrders = async (req, res) => {
+//   try {
+//     const paginationOptions = getPaginationOptions(req.query);
+//     const deliveryBoyId = req.deliveryBoy.id;
     
-    const orders = await Order.findAndCountAll({
-      where: {
-        deliveryBoyId: deliveryBoyId,
-        status: ["dispatched", "out_for_delivery"],
-      },
-      include: [
-        {
-          model: OrderAddress,
-          as: "address",
-          attributes: [
-            "fullName",
-            "phoneNumber",
-            "addressLine",
-            "city",
-            "state",
-            "zipCode",
-            "country",
-            "latitude",
-            "longitude",
-            "placeId",
-            "formattedAddress",
-          ],
-        },
-        {
-          model: Store,
-          as: "store",
-          attributes: [
-            "id",
-            "name",
-            "latitude",
-            "longitude",
-            "address",
-            "phoneNumber",
-            "openTime",
-            "closeTime"
-          ],
-        },
-        {
-          model: OrderItem,
-          as: "OrderItems",
-          attributes: ["productName", "quantity", "totalPrice"]
-        }
-      ],
-      order: [["deliveryDate", "ASC"], ["createdAt", "DESC"]],
-      distinct: true,
-      ...paginationOptions,
-    });
+//     const orders = await Order.findAndCountAll({
+//       where: {
+//         deliveryBoyId: deliveryBoyId,
+//         status: ["dispatched", "out_for_delivery"],
+//       },
+//       include: [
+//         {
+//           model: OrderAddress,
+//           as: "address",
+//           attributes: [
+//             "fullName",
+//             "phoneNumber",
+//             "addressLine",
+//             "city",
+//             "state",
+//             "zipCode",
+//             "country",
+//             "latitude",
+//             "longitude",
+//             "placeId",
+//             "formattedAddress",
+//           ],
+//         },
+//         {
+//           model: Store,
+//           as: "store",
+//           attributes: [
+//             "id",
+//             "name",
+//             "latitude",
+//             "longitude",
+//             "address",
+//             "phoneNumber",
+//             "openTime",
+//             "closeTime"
+//           ],
+//         },
+//         {
+//           model: OrderItem,
+//           as: "OrderItems",
+//           attributes: ["productName", "quantity", "totalPrice"]
+//         }
+//       ],
+//       order: [["deliveryDate", "ASC"], ["createdAt", "DESC"]],
+//       distinct: true,
+//       ...paginationOptions,
+//     });
     
-    // Transform orders to include both OTPs
-    const ordersWithDetails = orders.rows.map((order) => {
-      const orderJson = order.toJSON();
-      const address = orderJson.address;
-      const store = orderJson.store;
+//     // Transform orders to include both OTPs
+//     const ordersWithDetails = orders.rows.map((order) => {
+//       const orderJson = order.toJSON();
+//       const address = orderJson.address;
+//       const store = orderJson.store;
 
-      // Generate customer address navigation links
-      if (address) {
-        if (address.latitude && address.longitude) {
-          address.navigationLinks = {
-            googleMaps: `https://www.google.com/maps?q=${address.latitude},${address.longitude}`,
-            directions: `https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`,
-            waze: `https://waze.com/ul?ll=${address.latitude},${address.longitude}&navigate=yes`,
-          };
-        } else if (address.formattedAddress) {
-          const encodedAddress = encodeURIComponent(address.formattedAddress);
-          address.navigationLinks = {
-            googleMaps: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-            directions: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
-          };
-        }
-      }
+//       // Generate customer address navigation links
+//       if (address) {
+//         if (address.latitude && address.longitude) {
+//           address.navigationLinks = {
+//             googleMaps: `https://www.google.com/maps?q=${address.latitude},${address.longitude}`,
+//             directions: `https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`,
+//             waze: `https://waze.com/ul?ll=${address.latitude},${address.longitude}&navigate=yes`,
+//           };
+//         } else if (address.formattedAddress) {
+//           const encodedAddress = encodeURIComponent(address.formattedAddress);
+//           address.navigationLinks = {
+//             googleMaps: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
+//             directions: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
+//           };
+//         }
+//       }
 
-      // Generate store location links for dispatched orders
-      let storeLocation = null;
-      if (order.status === "dispatched" && store && store.latitude && store.longitude) {
-        storeLocation = {
-          name: store.name,
-          address: store.address,
-          phoneNumber: store.phoneNumber,
-          coordinates: {
-            lat: store.latitude,
-            lng: store.longitude
-          },
-          navigationLinks: {
-            googleMaps: `https://www.google.com/maps?q=${store.latitude},${store.longitude}`,
-            directions: `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`,
-            waze: `https://waze.com/ul?ll=${store.latitude},${store.longitude}&navigate=yes`,
-          }
-        };
-      }
+//       // Generate store location links for dispatched orders
+//       let storeLocation = null;
+//       if (order.status === "dispatched" && store && store.latitude && store.longitude) {
+//         storeLocation = {
+//           name: store.name,
+//           address: store.address,
+//           phoneNumber: store.phoneNumber,
+//           coordinates: {
+//             lat: store.latitude,
+//             lng: store.longitude
+//           },
+//           navigationLinks: {
+//             googleMaps: `https://www.google.com/maps?q=${store.latitude},${store.longitude}`,
+//             directions: `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`,
+//             waze: `https://waze.com/ul?ll=${store.latitude},${store.longitude}&navigate=yes`,
+//           }
+//         };
+//       }
 
-      // ✅ Include BOTH OTPs in the response
-      return {
-        orderNumber: order.orderNumber,
-        status: order.status,
-        deliveryDate: order.deliveryDate,
-        deliverySlot: order.deliverySlotId,
-        totalAmount: order.totalAmount,
-        paymentMethod: order.paymentMethod,
+//       // ✅ Include BOTH OTPs in the response
+//       return {
+//         orderNumber: order.orderNumber,
+//         status: order.status,
+//         deliveryDate: order.deliveryDate,
+//         deliverySlot: order.deliverySlotId,
+//         totalAmount: order.totalAmount,
+//         paymentMethod: order.paymentMethod,
         
-        // ✅ ALL OTPs for this order
-        otpInfo: {
-          // OTP for store pickup (already verified for out_for_delivery orders)
-          deliveryPickupOtp: order.deliveryPickupOtp,
-          deliveryPickupOtpVerified: order.deliveryPickupOtpVerified === 1,
+//         // ✅ ALL OTPs for this order
+//         otpInfo: {
+//           // OTP for store pickup (already verified for out_for_delivery orders)
+//           deliveryPickupOtp: order.deliveryPickupOtp,
+//           deliveryPickupOtpVerified: order.deliveryPickupOtpVerified === 1,
           
-          // OTP for customer delivery (current active OTP)
-          customerDeliveryOtp: order.otp,
-          customerDeliveryOtpVerified: order.otpVerified === 1,
+//           // OTP for customer delivery (current active OTP)
+//           customerDeliveryOtp: order.otp,
+//           customerDeliveryOtpVerified: order.otpVerified === 1,
           
-          // Pickup order OTP (if applicable)
-          pickupOtp: order.pickupOtp,
-          pickupOtpVerified: order.pickupOtpVerified === 1,
+//           // Pickup order OTP (if applicable)
+//           pickupOtp: order.pickupOtp,
+//           pickupOtpVerified: order.pickupOtpVerified === 1,
           
-          // Which OTP is currently needed
-          currentRequiredOtp: order.status === "dispatched" ? order.deliveryPickupOtp : order.otp,
-          currentStep: order.status === "dispatched" ? "STORE_PICKUP" : "CUSTOMER_DELIVERY",
-        },
+//           // Which OTP is currently needed
+//           currentRequiredOtp: order.status === "dispatched" ? order.deliveryPickupOtp : order.otp,
+//           currentStep: order.status === "dispatched" ? "STORE_PICKUP" : "CUSTOMER_DELIVERY",
+//         },
         
-        // Store location (only for dispatched orders)
-        storeLocation: storeLocation,
+//         // Store location (only for dispatched orders)
+//         storeLocation: storeLocation,
         
-        // Customer address
-        address: address,
+//         // Customer address
+//         address: address,
         
-        // Order items
-        items: order.OrderItems,
+//         // Order items
+//         items: order.OrderItems,
         
-        // Timeline
-        timeline: {
-          dispatchedAt: order.dispatchedAt,
-          outForDeliveryAt: order.outForDeliveryAt,
-          deliveredAt: order.deliveredAt
-        }
-      };
-    });
+//         // Timeline
+//         timeline: {
+//           dispatchedAt: order.dispatchedAt,
+//           outForDeliveryAt: order.outForDeliveryAt,
+//           deliveredAt: order.deliveredAt
+//         }
+//       };
+//     });
     
-    // Get summary statistics
-    const summary = {
-      totalAssigned: orders.count,
-      outForDelivery: orders.rows.filter(o => o.status === "out_for_delivery").length,
-      dispatched: orders.rows.filter(o => o.status === "dispatched").length,
-      todaysDeliveries: orders.rows.filter(o => o.deliveryDate === new Date().toISOString().split('T')[0]).length
-    };
+//     // Get summary statistics
+//     const summary = {
+//       totalAssigned: orders.count,
+//       outForDelivery: orders.rows.filter(o => o.status === "out_for_delivery").length,
+//       dispatched: orders.rows.filter(o => o.status === "dispatched").length,
+//       todaysDeliveries: orders.rows.filter(o => o.deliveryDate === new Date().toISOString().split('T')[0]).length
+//     };
     
-    const response = formatPagination(
-      {
-        count: orders.count,
-        rows: ordersWithDetails,
-      },
-      paginationOptions.currentPage,
-      paginationOptions.limit,
-    );
+//     const response = formatPagination(
+//       {
+//         count: orders.count,
+//         rows: ordersWithDetails,
+//       },
+//       paginationOptions.currentPage,
+//       paginationOptions.limit,
+//     );
 
-    return res.json({
-      success: true,
-      summary: summary,
-      ...response,
-    });
+//     return res.json({
+//       success: true,
+//       summary: summary,
+//       ...response,
+//     });
     
-  } catch (err) {
-    console.error("Get my assigned orders error:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
+//   } catch (err) {
+//     console.error("Get my assigned orders error:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: err.message,
+//     });
+//   }
+// };
 
-exports.verifyDeliveryOtp = async (req, res) => {
-  try {
-    const { orderNumber, otp } = req.body;
+// exports.verifyDeliveryOtp = async (req, res) => {
+//   try {
+//     const { orderNumber, otp } = req.body;
 
-    if (!orderNumber || !otp) {
-      throw new Error("orderNumber and otp required");
-    }
+//     if (!orderNumber || !otp) {
+//       throw new Error("orderNumber and otp required");
+//     }
 
-    const order = await Order.findOne({ where: { orderNumber } });
-    if (!order) throw new Error("Order not found");
+//     const order = await Order.findOne({ where: { orderNumber } });
+//     if (!order) throw new Error("Order not found");
 
-    // must belong to this delivery boy
-    if (order.deliveryBoyId !== req.deliveryBoy.id) {
-      throw new Error("Not authorized for this order");
-    }
+//     // must belong to this delivery boy
+//     if (order.deliveryBoyId !== req.deliveryBoy.id) {
+//       throw new Error("Not authorized for this order");
+//     }
 
-    if (order.status !== "out_for_delivery") {
-      throw new Error("Order not in deliverable state");
-    }
+//     if (order.status !== "out_for_delivery") {
+//       throw new Error("Order not in deliverable state");
+//     }
 
-    // Simple OTP check
-    if (order.otp !== otp) {
-      throw new Error("Invalid OTP");
-    }
+//     // Simple OTP check
+//     if (order.otp !== otp) {
+//       throw new Error("Invalid OTP");
+//     }
 
-    const updateData = {
-      otpVerified: true,
-      otp: null, // remove OTP after successful verification
-      deliveredAt: new Date(),
-    };
+//     const updateData = {
+//       otpVerified: true,
+//       otp: null, // remove OTP after successful verification
+//       deliveredAt: new Date(),
+//     };
 
-    // Update status based on payment method
-    if (order.paymentMethod === "COD") {
-      updateData.status = "completed"; // COD: mark delivered
-      updateData.completedAt = new Date();
-      updateData.paymentStatus = "paid";
-    } else {
-      updateData.status = "completed"; // Online: mark completed
-      updateData.completedAt = new Date();
-      updateData.paymentStatus = "paid";
-    }
+//     // Update status based on payment method
+//     if (order.paymentMethod === "COD") {
+//       updateData.status = "completed"; // COD: mark delivered
+//       updateData.completedAt = new Date();
+//       updateData.paymentStatus = "paid";
+//     } else {
+//       updateData.status = "completed"; // Online: mark completed
+//       updateData.completedAt = new Date();
+//       updateData.paymentStatus = "paid";
+//     }
 
-    await order.update(updateData);
+//     await order.update(updateData);
 
-    res.json({
-      success: true,
-      message:
-        order.paymentMethod === "COD"
-          ? "Delivered. Collect cash & confirm payment."
-          : "Order completed successfully.",
-    });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-};
+//     res.json({
+//       success: true,
+//       message:
+//         order.paymentMethod === "COD"
+//           ? "Delivered. Collect cash & confirm payment."
+//           : "Order completed successfully.",
+//     });
+//   } catch (err) {
+//     res.status(400).json({ success: false, message: err.message });
+//   }
+// };
 
-exports.confirmCodPayment = async (req, res) => {
-  try {
-    const { orderNumber } = req.body;
+// exports.confirmCodPayment = async (req, res) => {
+//   try {
+//     const { orderNumber } = req.body;
 
-    const order = await Order.findOne({ where: { orderNumber } });
-    if (!order) throw new Error("Order not found");
+//     const order = await Order.findOne({ where: { orderNumber } });
+//     if (!order) throw new Error("Order not found");
 
-    if (order.deliveryBoyId !== req.deliveryBoy.id) {
-      throw new Error("Not authorized");
-    }
+//     if (order.deliveryBoyId !== req.deliveryBoy.id) {
+//       throw new Error("Not authorized");
+//     }
 
-    if (order.paymentMethod !== "COD") {
-      throw new Error("Not a COD order");
-    }
+//     if (order.paymentMethod !== "COD") {
+//       throw new Error("Not a COD order");
+//     }
 
-    if (order.status !== "delivered") {
-      throw new Error("Order not delivered yet");
-    }
+//     if (order.status !== "delivered") {
+//       throw new Error("Order not delivered yet");
+//     }
 
-    await order.update({
-      status: "completed",
-      paymentStatus: "paid",
-      completedAt: new Date(),
-    });
+//     await order.update({
+//       status: "completed",
+//       paymentStatus: "paid",
+//       completedAt: new Date(),
+//     });
 
-    res.json({
-      success: true,
-      message: "COD payment confirmed. Order completed.",
-    });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-};
+//     res.json({
+//       success: true,
+//       message: "COD payment confirmed. Order completed.",
+//     });
+//   } catch (err) {
+//     res.status(400).json({ success: false, message: err.message });
+//   }
+// };
