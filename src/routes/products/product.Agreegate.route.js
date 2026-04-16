@@ -18,6 +18,7 @@ const {protected, optionalAuth} = require("../../middleware/user.logout.middlewa
 const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
 const { getAllProductsDetailsAdmin, getProductDetailsByIdAdmin } = require("../../controllers/AggregateProducts/adminSide/product.admin.controller");
 const { calculateProductPrice } = require("../../controllers/AggregateProducts/calculateProductPrice.controller");
+const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
 
 
 // router.post("/products", upload.any(), productController.createProduct)
@@ -45,8 +46,8 @@ router.delete('/delete/:id', adminAuth,  allowAdminRoles("superAdmin"), deletePr
 
 
 //ADMIN SIDE
-router.get('/admin/products', adminAuth,  allowAdminRoles("superAdmin"), getAllProductsDetailsAdmin)
-router.get('/admin/products/:id', adminAuth,  allowAdminRoles("superAdmin"), getProductDetailsByIdAdmin)
+router.get('/admin/products', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, getAllProductsDetailsAdmin)
+router.get('/admin/products/:id', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, getProductDetailsByIdAdmin)
 
 router.post('/calculate-price', calculateProductPrice)
 
