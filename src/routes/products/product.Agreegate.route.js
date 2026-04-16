@@ -46,8 +46,8 @@ router.delete('/delete/:id', adminAuth,  allowAdminRoles("superAdmin"), deletePr
 
 
 //ADMIN SIDE
-router.get('/admin/products', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, getAllProductsDetailsAdmin)
-router.get('/admin/products/:id', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, getProductDetailsByIdAdmin)
+router.get('/admin/products', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"),  getAllProductsDetailsAdmin)
+router.get('/admin/products/:id', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), getProductDetailsByIdAdmin)
 
 router.post('/calculate-price', calculateProductPrice)
 
