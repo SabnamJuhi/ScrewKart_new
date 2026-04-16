@@ -693,56 +693,93 @@ if (deliveryType === "delivery") {
     await t.commit();
 
     // ================= GENERATE INVOICE AFTER COMMIT =================
-    let invoicePath = null;
-    const fs = require('fs');
-    const path = require('path');
+    // let invoicePath = null;
+    // const fs = require('fs');
+    // const path = require('path');
     
-    try {
-      console.log("📄 Generating invoice for order:", order.orderNumber);
-      console.log("Order items count:", orderItems.length);
+    // try {
+    //   console.log("📄 Generating invoice for order:", order.orderNumber);
+    //   console.log("Order items count:", orderItems.length);
       
-      // Ensure invoices directory exists
-      const invoiceDir = path.join(process.cwd(), 'invoices');
-      if (!fs.existsSync(invoiceDir)) {
-        fs.mkdirSync(invoiceDir, { recursive: true });
-      }
+    //   // Ensure invoices directory exists
+    //   const invoiceDir = path.join(process.cwd(), 'invoices');
+    //   if (!fs.existsSync(invoiceDir)) {
+    //     fs.mkdirSync(invoiceDir, { recursive: true });
+    //   }
       
-      // Generate invoice using in-memory data
-      invoicePath = await generateInvoice({
-        order: order.toJSON ? order.toJSON() : order,
-        orderItems: orderItems.map(item => item.toJSON ? item.toJSON() : item),
-        address: addressData,
-      });
+    //   // Generate invoice using in-memory data
+    //   invoicePath = await generateInvoice({
+    //     order: order.toJSON ? order.toJSON() : order,
+    //     orderItems: orderItems.map(item => item.toJSON ? item.toJSON() : item),
+    //     address: addressData,
+    //   });
       
-      if (invoicePath && fs.existsSync(invoicePath)) {
-        console.log("✅ Invoice generated successfully at:", invoicePath);
+    //   if (invoicePath && fs.existsSync(invoicePath)) {
+    //     console.log("✅ Invoice generated successfully at:", invoicePath);
         
-        // Update database with invoice info
-        await Order.update(
-          {
-            invoiceUrl: invoicePath,
-            invoiceStatus: "generated",
-          },
-          {
-            where: { id: order.id },
-          }
-        );
-        console.log("✅ Invoice URL saved to database for order:", order.orderNumber);
-      } else {
-        console.warn("⚠️ Invoice generation returned invalid path");
-        await Order.update(
-          { invoiceStatus: "failed" },
-          { where: { id: order.id } }
-        );
-      }
+    //     // Update database with invoice info
+    //     await Order.update(
+    //       {
+    //         invoiceUrl: invoicePath,
+    //         invoiceStatus: "generated",
+    //       },
+    //       {
+    //         where: { id: order.id },
+    //       }
+    //     );
+    //     console.log("✅ Invoice URL saved to database for order:", order.orderNumber);
+    //   } else {
+    //     console.warn("⚠️ Invoice generation returned invalid path");
+    //     await Order.update(
+    //       { invoiceStatus: "failed" },
+    //       { where: { id: order.id } }
+    //     );
+    //   }
       
-    } catch (err) {
-      console.error("❌ Invoice generation failed:", err.message);
-      await Order.update(
-        { invoiceStatus: "failed" },
-        { where: { id: order.id } }
-      ).catch(console.error);
+    // } catch (err) {
+    //   console.error("❌ Invoice generation failed:", err.message);
+    //   await Order.update(
+    //     { invoiceStatus: "failed" },
+    //     { where: { id: order.id } }
+    //   ).catch(console.error);
+    // }
+
+    // Only generate invoice for COD
+let invoicePath = null;
+const fs = require("fs");
+    const path = require("path");
+
+if (isCOD) {
+  try {
+    
+
+    const invoiceDir = path.join(process.cwd(), "invoices");
+    if (!fs.existsSync(invoiceDir)) {
+      fs.mkdirSync(invoiceDir, { recursive: true });
     }
+
+    invoicePath = await generateInvoice({
+      order: order.toJSON ? order.toJSON() : order,
+      orderItems: orderItems,
+      address: addressData,
+    });
+
+    if (invoicePath && fs.existsSync(invoicePath)) {
+      await Order.update(
+        {
+          invoiceUrl: invoicePath,
+          invoiceStatus: "generated",
+        },
+        { where: { id: order.id } }
+      );
+    }
+  } catch (err) {
+    await Order.update(
+      { invoiceStatus: "failed" },
+      { where: { id: order.id } }
+    );
+  }
+}
 
     // ================= SEND EMAIL =================
     if (process.env.NODE_ENV !== "test") {
@@ -856,6 +893,120 @@ return res.json(responseData);
 };
 
 
+// exports.verifyRazorpayPayment = async (req, res) => {
+//   const t = await sequelize.transaction();
+
+//   try {
+//     const {
+//       razorpay_order_id,
+//       razorpay_payment_id,
+//       razorpay_signature,
+//       orderNumber,
+//     } = req.body;
+
+//     const body = razorpay_order_id + "|" + razorpay_payment_id;
+
+//     const expectedSignature = crypto
+//       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+//       .update(body.toString())
+//       .digest("hex");
+
+//     if (expectedSignature !== razorpay_signature) {
+//       throw new Error("Payment verification failed");
+//     }
+
+//     const order = await Order.findOne({
+//       where: { orderNumber },
+//       include: [OrderItem],
+//       transaction: t,
+//       lock: true,
+//     });
+
+//     if (!order) throw new Error("Order not found");
+
+//     if (order.paymentStatus === "paid") {
+//       await t.commit();
+//       return res.json({ success: true });
+//     }
+
+//     await order.update(
+//       {
+//         status: "confirmed",
+//         paymentStatus: "paid",
+//         transactionId: razorpay_payment_id,
+//         paidAt: new Date(),
+//       },
+//       { transaction: t },
+//     );
+
+//    // AFTER order.update (payment success)
+// const fs = require("fs");
+// const path = require("path");
+
+// const address = await OrderAddress.findOne({
+//   where: { orderId: order.id },
+// });
+
+// const invoiceDir = path.join(process.cwd(), "invoices");
+// if (!fs.existsSync(invoiceDir)) {
+//   fs.mkdirSync(invoiceDir, { recursive: true });
+// }
+
+// let invoicePath = null;
+
+// try {
+//   invoicePath = await generateInvoice({
+//     order: order.toJSON(),
+//     orderItems: order.OrderItems.map(i => i.toJSON()),
+//     address: address?.toJSON(),
+//   });
+
+//   if (invoicePath && fs.existsSync(invoicePath)) {
+//     await order.update({
+//       invoiceUrl: invoicePath,
+//       invoiceStatus: "generated",
+//     });
+//   } else {
+//     await order.update({ invoiceStatus: "failed" });
+//   }
+// } catch (err) {
+//   console.error("Invoice generation failed:", err);
+//   await order.update({ invoiceStatus: "failed" });
+// }
+
+// sendInvoiceEmail({
+//   orderNumber: order.orderNumber,
+//   orderAddress: address,
+//   orderItems: order.OrderItems,
+//   totalAmount: order.totalAmount,
+//   subtotal: order.subtotal,
+//   taxAmount: order.taxAmount,
+//   shippingFee: order.shippingFee,
+//   deliveryType: order.deliveryType,
+//   invoicePath: invoicePath || null,
+// }).catch(console.error);
+    
+//     await CartItem.destroy({
+//       where: { userId: order.userId },
+//       transaction: t,
+//     });
+
+//     await t.commit();
+
+//     return res.json({
+//       success: true,
+//       message: "Payment verified",
+//     });
+//   } catch (err) {
+//     await t.rollback();
+
+//     return res.status(400).json({
+//       success: false,
+//       message: err.message,
+//     });
+//   }
+// };
+
 exports.verifyRazorpayPayment = async (req, res) => {
   const t = await sequelize.transaction();
 
@@ -867,69 +1018,206 @@ exports.verifyRazorpayPayment = async (req, res) => {
       orderNumber,
     } = req.body;
 
+    // ================= VERIFY SIGNATURE =================
     const body = razorpay_order_id + "|" + razorpay_payment_id;
-
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
+      .update(body)
       .digest("hex");
 
     if (expectedSignature !== razorpay_signature) {
       throw new Error("Payment verification failed");
     }
 
-    const order = await Order.findOne({
+    // ================= FETCH ORDER WITH ALL DATA =================
+    let order = await Order.findOne({
       where: { orderNumber },
-      include: [OrderItem],
+      include: [
+        { 
+          model: OrderItem,
+          required: true,  // Ensure items exist
+        }
+      ],
       transaction: t,
-      lock: true,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!order) throw new Error("Order not found");
-
-    if (order.paymentStatus === "paid") {
-      await t.commit();
-      return res.json({ success: true });
+    if (!order.OrderItems || order.OrderItems.length === 0) {
+      throw new Error("No order items found");
     }
 
+    // ================= ALREADY PAID =================
+    if (order.paymentStatus === "paid") {
+      await t.commit();
+      return res.json({ 
+        success: true, 
+        message: "Payment already verified",
+        invoiceGenerated: !!order.invoiceUrl 
+      });
+    }
+
+    // ================= UPDATE ORDER =================
     await order.update(
       {
         status: "confirmed",
         paymentStatus: "paid",
         transactionId: razorpay_payment_id,
         paidAt: new Date(),
+        confirmedAt: new Date(), // Add confirmed timestamp
       },
-      { transaction: t },
+      { transaction: t }
     );
 
-    // //  deduct stock
-    // for (const item of order.OrderItems) {
-    //   await VariantSize.decrement("stock", {
-    //     by: item.quantity,
-    //     where: { id: item.sizeId },
-    //     transaction: t,
-    //   });
-
-    //   await ProductVariant.decrement("totalStock", {
-    //     by: item.quantity,
-    //     where: { id: item.variantId },
-    //     transaction: t,
-    //   });
-    // }
-
+    // ================= CLEAR CART =================
     await CartItem.destroy({
       where: { userId: order.userId },
       transaction: t,
     });
 
+    // ✅ IMPORTANT: COMMIT BEFORE INVOICE GENERATION
     await t.commit();
 
+    // ============================================================
+    // 🔥 RE-FETCH COMPLETE ORDER DATA WITH PROPER ASSOCIATIONS
+    // ============================================================
+    const completeOrder = await Order.findOne({
+      where: { id: order.id },
+      include: [
+        {
+          model: OrderItem,
+          required: true,
+        }
+      ],
+    });
+
+    if (!completeOrder || !completeOrder.OrderItems || completeOrder.OrderItems.length === 0) {
+      console.error("❌ Failed to fetch order items for invoice");
+      return res.json({
+        success: true,
+        message: "Payment verified but invoice generation failed - no items found",
+        invoiceGenerated: false,
+      });
+    }
+
+    // Fetch address
+    const address = await OrderAddress.findOne({
+      where: { orderId: completeOrder.id },
+    });
+
+    if (!address) {
+      console.error("❌ Address not found for order:", completeOrder.orderNumber);
+    }
+
+    // ================= GENERATE INVOICE =================
+    const fs = require("fs");
+    const path = require("path");
+    let invoicePath = null;
+
+    try {
+      const invoiceDir = path.join(process.cwd(), "invoices");
+      if (!fs.existsSync(invoiceDir)) {
+        fs.mkdirSync(invoiceDir, { recursive: true });
+      }
+
+      console.log("📄 Generating invoice for ONLINE order:", completeOrder.orderNumber);
+      console.log("Order items count:", completeOrder.OrderItems.length);
+
+      // ✅ Prepare order items with all snapshots (they should already be in the database)
+      const orderItemsForInvoice = completeOrder.OrderItems.map(item => {
+        const itemJson = item.toJSON();
+        
+        // Log to debug what's available
+        console.log(`Item ${item.id}: productSnapshot exists: ${!!itemJson.productSnapshot}`);
+        console.log(`Item ${item.id}: variantSnapshot exists: ${!!itemJson.variantSnapshot}`);
+        
+        return itemJson;
+      });
+
+      // Generate invoice
+      invoicePath = await generateInvoice({
+        order: completeOrder.toJSON(),
+        orderItems: orderItemsForInvoice,
+        address: address?.toJSON(),
+      });
+
+      console.log("Invoice generation returned:", invoicePath);
+
+      // ✅ Verify file exists and is accessible
+      if (invoicePath && fs.existsSync(invoicePath)) {
+        const stats = fs.statSync(invoicePath);
+        console.log(`✅ Invoice file created successfully. Size: ${stats.size} bytes`);
+
+        // Update order with invoice info
+        await Order.update(
+          {
+            invoiceUrl: invoicePath,
+            invoiceStatus: "generated",
+          },
+          { where: { id: completeOrder.id } }
+        );
+        
+        console.log("✅ Invoice URL saved to database");
+      } else {
+        console.error("❌ Invoice file not found at path:", invoicePath);
+        await Order.update(
+          { invoiceStatus: "failed" },
+          { where: { id: completeOrder.id } }
+        );
+        invoicePath = null;
+      }
+    } catch (err) {
+      console.error("❌ Invoice generation failed:", err);
+      console.error("Error stack:", err.stack);
+      
+      await Order.update(
+        { invoiceStatus: "failed" },
+        { where: { id: completeOrder.id } }
+      );
+      invoicePath = null;
+    }
+
+    // ================= SEND EMAIL =================
+    try {
+      console.log("📧 Sending invoice email...");
+      console.log("Invoice path for email:", invoicePath);
+      console.log("File exists check:", invoicePath ? fs.existsSync(invoicePath) : false);
+
+      // ✅ Prepare address data for email
+      const addressForEmail = address?.toJSON() || null;
+      
+      // ✅ Send email with proper data
+      await sendInvoiceEmail({
+        orderNumber: completeOrder.orderNumber,
+        orderAddress: addressForEmail,
+        orderItems: completeOrder.OrderItems.map(i => i.toJSON()),
+        totalAmount: completeOrder.totalAmount,
+        subtotal: completeOrder.subtotal,
+        taxAmount: completeOrder.taxAmount,
+        shippingFee: completeOrder.shippingFee,
+        deliveryType: completeOrder.deliveryType,
+        invoicePath: invoicePath, // This should be the full path
+      });
+
+      console.log("✅ Email sent successfully");
+    } catch (emailErr) {
+      console.error("❌ Email sending failed:", emailErr);
+      console.error("Email error details:", emailErr.message);
+      // Don't throw here - payment is already verified
+    }
+
+    // ================= RESPONSE =================
     return res.json({
       success: true,
-      message: "Payment verified",
+      message: "Payment verified & invoice processed",
+      invoiceGenerated: !!invoicePath,
+      invoicePath: invoicePath, // Optional: for debugging
     });
+
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
+    console.error("VERIFY PAYMENT ERROR:", err);
+    console.error("Error stack:", err.stack);
 
     return res.status(400).json({
       success: false,

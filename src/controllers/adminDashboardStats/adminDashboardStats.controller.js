@@ -699,8 +699,7 @@ exports.getDashboardStats = async (req, res) => {
       console.log("ProductRating query failed:", err.message);
     }
 
-    console.log("todayStart:", todayStart);
-console.log("todayEnd:", todayEnd);
+ 
     /* =========================================================
        FINAL RESPONSE
     ========================================================== */
