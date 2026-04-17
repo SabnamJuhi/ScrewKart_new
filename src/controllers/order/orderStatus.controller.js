@@ -287,10 +287,18 @@ exports.markAsDelivered = async (req, res) => {
 
     // For COD orders, mark as completed immediately
     if (order.paymentMethod === "COD") {
-      updateData.status = "completed";
-      updateData.completedAt = new Date();
-      updateData.paymentStatus = "paid";
-    }
+
+  // If already paid via QR
+  if (order.paymentStatus === "paid") {
+    updateData.status = "completed";
+    updateData.completedAt = new Date();
+  } else {
+    // Cash collected manually
+    updateData.paymentStatus = "paid";
+    updateData.status = "completed";
+    updateData.completedAt = new Date();
+  }
+}
 
     await order.update(updateData);
   

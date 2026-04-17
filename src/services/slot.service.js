@@ -50,7 +50,12 @@ const SLOT_TIMINGS = [
 
 // In slot.service.js
 const getAvailableSlots = async (date) => {
-  const now = new Date();
+  const now = new Date(); 
+  // ✅ Convert to IST
+  const istNow = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+  );
+
   const bufferTime = new Date(now.getTime() + 30 * 60000);
   const currentTimeStr = now.toTimeString().slice(0, 5);
   
@@ -63,7 +68,8 @@ const getAvailableSlots = async (date) => {
   });
   
   return slots.filter((slot) => {
-    const slotStart = new Date(`${date}T${slot.startTime}`);
+    // const slotStart = new Date(`${date}T${slot.startTime}`);
+    const slotStart = new Date(`${date}T${slot.startTime}+05:30`);
     
     // Remove past slots
     if (slotStart <= now) return false;

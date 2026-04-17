@@ -79,6 +79,8 @@ app.use('/api/otp', require("./routes/otpVerification/otpVerification.routes"))
 
 app.use('/api/appNotification', require("./routes/notifications/notifications.routes"))
 
+app.use('/api/payment', require("./routes/payment/payment.routes"))
+
 
 app.use((err, req, res, next) => {
   console.error("GLOBAL ERROR:", err);

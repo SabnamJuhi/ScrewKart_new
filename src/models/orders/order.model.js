@@ -74,6 +74,21 @@ const Order = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+
+     // ✅ NEW FIELDS (ADD THESE)
+    razorpayLinkId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    razorpayPaymentId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    razorpayQrUrl: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    
     deliveryBoyId: {
       type: DataTypes.INTEGER,
       allowNull: true,
