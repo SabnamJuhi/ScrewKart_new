@@ -9,6 +9,8 @@ const {
 } = require("../../models");
 const {
   createOrderNotification,
+  createDeliveryNotification,
+  createAdminNotification,
 } = require("../../services/notificatonInApp.service");
 
 // ✅ Try to import DeliveryBoy, with fallback
@@ -188,6 +190,11 @@ exports.assignDeliveryBoy = async (req, res) => {
       orderNumber: order.orderNumber,
       status: order.status,
     });
+    await createDeliveryNotification({
+  deliveryBoyId,
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+});
 
     await notifyDeliveryBoy(deliveryBoy, order);
 
@@ -293,6 +300,12 @@ exports.markAsDelivered = async (req, res) => {
       orderNumber: order.orderNumber,
       status: order.status,
     });
+    await createAdminNotification({
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+  storeId: order.storeId, // ✅ VERY IMPORTANT
+  type: "completed",
+});
 
     res.json({
       success: true,

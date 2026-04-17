@@ -13,6 +13,7 @@ const {
 const Razorpay = require("razorpay");
 const {
   createOrderNotification,
+  createAdminNotification,
 } = require("../../services/notificatonInApp.service");
 
 const razorpay = new Razorpay({
@@ -218,6 +219,12 @@ exports.cancelOrder = async (req, res) => {
       orderNumber: order.orderNumber,
       status: order.status,
     });
+    await createAdminNotification({
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+   storeId: order.storeId, 
+  type: "cancelled",
+});
 
     // Initiate refund for prepaid orders (outside transaction)
     let refundResult = null;
@@ -342,6 +349,12 @@ exports.cancelPickupOrder = async (req, res) => {
       orderNumber: order.orderNumber,
       status: order.status,
     });
+    await createAdminNotification({
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+   storeId: order.storeId, 
+  type: "cancelled",
+});
 
     // Initiate refund for prepaid orders
     let refundResult = null;
@@ -476,6 +489,12 @@ exports.adminCancelOrder = async (req, res) => {
       status: order.status,
       message: `Your order has been cancelled by admin. Reason: ${order.cancellationReason}`,
     });
+    await createAdminNotification({
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+   storeId: order.storeId, 
+  type: "cancelled",
+});
 
     // Initiate refund for prepaid orders if requested
     let refundResult = null;

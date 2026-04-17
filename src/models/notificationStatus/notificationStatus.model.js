@@ -12,6 +12,10 @@ const Notification = sequelize.define("Notification", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  deliveryBoyId: {
+  type: DataTypes.INTEGER,
+  allowNull: true,
+},
   orderId: {
     type: DataTypes.INTEGER,
     allowNull: true,
@@ -26,6 +30,10 @@ const Notification = sequelize.define("Notification", {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  isDeleted: {
+  type: DataTypes.BOOLEAN,
+  defaultValue: false,
+}
 }, {
   tableName: "notifications",
   timestamps: true,

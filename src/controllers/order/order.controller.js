@@ -36,6 +36,7 @@ const { getAvailableSlots } = require("../../services/slot.service");
 const moment = require("moment");
 const {
   createOrderNotification,
+  createAdminNotification,
 } = require("../../services/notificatonInApp.service");
 
 function generateOtp() {
@@ -720,6 +721,12 @@ exports.placeOrder = async (req, res) => {
       orderNumber: order.orderNumber,
       status: order.status, // pending or confirmed
     });
+    await createAdminNotification({
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+   storeId: order.storeId, 
+  type: "confirmed",
+});
 
     // ================= GENERATE INVOICE AFTER COMMIT =================
     // let invoicePath = null;
@@ -1107,6 +1114,12 @@ exports.verifyRazorpayPayment = async (req, res) => {
       orderNumber: order.orderNumber,
       status: order.status,
     });
+    await createAdminNotification({
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+   storeId: order.storeId, 
+  type: "confirmed",
+});
 
     // ================= RE-FETCH ORDER =================
     const completeOrder = await Order.findOne({

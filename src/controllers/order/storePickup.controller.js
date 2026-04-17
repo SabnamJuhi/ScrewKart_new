@@ -1,7 +1,7 @@
 const { Order, Store } = require("../../models");
 const DeliveryBoy =  require("../../models/orders/deliveryBoy.model")
 const { Op } = require("sequelize");
-const { createOrderNotification } = require("../../services/notificatonInApp.service");
+const { createOrderNotification, createAdminNotification } = require("../../services/notificatonInApp.service");
 
 /**
  * Generate OTP (for reference)
@@ -164,6 +164,12 @@ exports.verifyCustomerPickup = async (req, res) => {
       orderNumber: order.orderNumber,
       status:order.status,
     });
+    await createAdminNotification({
+  orderId: order.id,
+  orderNumber: order.orderNumber,
+  storeId: order.storeId, // ✅ VERY IMPORTANT
+  type: "completed",
+});
 
     return res.json({
       success: true,
