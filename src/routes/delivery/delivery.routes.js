@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 
 const slotController = require("../../controllers/delivery/slot.controller");
-const deliveryController = require("../../controllers/delivery/delivery.controller");
 const {protected} = require("../../middleware/user.logout.middleware")
 
 // Public routes (or protected with admin role)

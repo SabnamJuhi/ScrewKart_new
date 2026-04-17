@@ -20,6 +20,6 @@ router.put("/:orderNumber/deliver", deliveryBoyAuth, orderCntrl.markAsDelivered)
 
 // Customer routes
 router.get("/:orderNumber/timeline", protected, orderCntrl.getOrderTimeline);
-router.delete("/:orderNumber/cancel",  protected, orderCntrl.cancelOrder);
+// router.delete("/:orderNumber/cancel",  protected, orderCntrl.cancelOrder);
 
 module.exports = router;

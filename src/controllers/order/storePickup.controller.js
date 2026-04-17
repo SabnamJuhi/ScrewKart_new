@@ -1,5 +1,7 @@
 const { Order, Store } = require("../../models");
 const DeliveryBoy =  require("../../models/orders/deliveryBoy.model")
+const { Op } = require("sequelize");
+const { createOrderNotification } = require("../../services/notificatonInApp.service");
 
 /**
  * Generate OTP (for reference)
@@ -68,6 +70,12 @@ exports.verifyDeliveryBoyPickup = async (req, res) => {
       pickedUpBy: "delivery_boy",
       status: "out_for_delivery",
       outForDeliveryAt: new Date()
+    });
+     await createOrderNotification({
+      userId: order.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
     });
 
     return res.json({
@@ -150,6 +158,12 @@ exports.verifyCustomerPickup = async (req, res) => {
       completedAt: new Date(),
       paymentStatus: "paid"
     });
+     await createOrderNotification({
+      userId: order.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status:order.status,
+    });
 
     return res.json({
       success: true,
@@ -174,8 +188,6 @@ exports.verifyCustomerPickup = async (req, res) => {
 /**
  * STORE ADMIN: Get all pending pickups for their store
  */
-const { Op } = require("sequelize");
-
 exports.getPendingPickups = async (req, res) => {
   try {
     const adminStoreId = req.admin?.storeId;

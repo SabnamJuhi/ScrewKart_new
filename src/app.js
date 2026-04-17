@@ -75,6 +75,10 @@ app.use('/api/orderStatus', require("./routes/order/orderStatus.routes"))
 
 app.use('/api/storePickup', require("./routes/order/storePickup.routes"))
 
+app.use('/api/otp', require("./routes/otpVerification/otpVerification.routes"))
+
+app.use('/api/appNotification', require("./routes/notifications/notifications.routes"))
+
 
 app.use((err, req, res, next) => {
   console.error("GLOBAL ERROR:", err);

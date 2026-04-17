@@ -34,6 +34,9 @@ const { getDistanceKm } = require("../../utils/distance");
 const { getDeliveryCharge } = require("../../utils/deliveryCharges");
 const { getAvailableSlots } = require("../../services/slot.service");
 const moment = require("moment");
+const {
+  createOrderNotification,
+} = require("../../services/notificatonInApp.service");
 
 function generateOtp() {
   return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
@@ -82,7 +85,7 @@ exports.placeOrder = async (req, res) => {
     // Validate coordinates for delivery
     if (deliveryType === "delivery" && (!userLatitude || !userLongitude)) {
       throw new Error(
-        "Address coordinates missing. Please update your address with valid latitude and longitude."
+        "Address coordinates missing. Please update your address with valid latitude and longitude.",
       );
     }
 
@@ -110,7 +113,12 @@ exports.placeOrder = async (req, res) => {
 
     // ================= BUY NOW =================
     if (buyNow) {
-      const { productId, variantId, quantity, storeId: requestStoreId } = buyNow;
+      const {
+        productId,
+        variantId,
+        quantity,
+        storeId: requestStoreId,
+      } = buyNow;
 
       const product = await Product.findByPk(productId, {
         include: [
@@ -167,16 +175,16 @@ exports.placeOrder = async (req, res) => {
       if (!product || !variant) throw new Error("Invalid Buy Now product");
 
       if (!requestStoreId) {
-  throw new Error("StoreId is required for Buy Now");
-}  
-storeId = requestStoreId;
+        throw new Error("StoreId is required for Buy Now");
+      }
+      storeId = requestStoreId;
 
       // Get store inventory
       const storeInventory = await StoreInventory.findOne({
-         where: {
-    variantId: variant.id,
-    storeId: storeId,
-  },
+        where: {
+          variantId: variant.id,
+          storeId: storeId,
+        },
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
@@ -294,13 +302,13 @@ storeId = requestStoreId;
 
         if (!storeInventory || storeInventory.stock < item.quantity) {
           throw new Error(
-            `Insufficient stock for ${item.product?.title || "product"}`
+            `Insufficient stock for ${item.product?.title || "product"}`,
           );
         }
 
         const priceResult = await priceService.getFinalPrice(
           item.variantId,
-          item.quantity
+          item.quantity,
         );
         item.storeInventory = storeInventory;
         item.basePrice = Number(priceResult.price);
@@ -329,7 +337,7 @@ storeId = requestStoreId;
       if (!basePrice || qty <= 0) throw new Error("Invalid order item");
       if (stock < qty) {
         throw new Error(
-          `Insufficient stock for ${item.product?.title || "product"}. Available: ${stock}`
+          `Insufficient stock for ${item.product?.title || "product"}. Available: ${stock}`,
         );
       }
 
@@ -435,17 +443,19 @@ storeId = requestStoreId;
         Number(userLatitude),
         Number(userLongitude),
         Number(store.latitude),
-        Number(store.longitude)
+        Number(store.longitude),
       );
 
-      console.log(`Distance calculated: ${distanceKm.toFixed(2)}km between user address and store`);
+      console.log(
+        `Distance calculated: ${distanceKm.toFixed(2)}km between user address and store`,
+      );
 
       // Check if delivery is available at this distance
       const deliveryRadius = store.deliveryRadius || 8;
       if (distanceKm > deliveryRadius) {
         throw new Error(
           `❌ Delivery not available to your location (${distanceKm.toFixed(2)}km > 8km). ` +
-          `Please choose "self-pickup" option. You can collect your order from our store at: ${store.address || store.location}`
+            `Please choose "self-pickup" option. You can collect your order from our store at: ${store.address || store.location}`,
         );
       }
 
@@ -478,15 +488,15 @@ storeId = requestStoreId;
       const now = new Date();
       const bufferTime = new Date(now.getTime() + 30 * 60000);
       const slotStart = new Date(`${slot.date}T${slot.startTime}`);
-      const isToday = requestedDate === new Date().toISOString().split('T')[0];
+      const isToday = requestedDate === new Date().toISOString().split("T")[0];
 
       if (isToday && slotStart <= bufferTime) {
         const nextSlotTime = new Date(bufferTime);
         nextSlotTime.setMinutes(Math.ceil(nextSlotTime.getMinutes() / 60) * 60);
         throw new Error(
           `⚠️ Minimum 30 minutes preparation time required. ` +
-          `Earliest available slot is after ${nextSlotTime.toLocaleTimeString()}. ` +
-          `Please select a later slot or choose tomorrow.`
+            `Earliest available slot is after ${nextSlotTime.toLocaleTimeString()}. ` +
+            `Please select a later slot or choose tomorrow.`,
         );
       }
 
@@ -509,41 +519,48 @@ storeId = requestStoreId;
         throw new Error(delivery.message);
       }
       shippingFee = delivery.deliveryCharge;
-      
     } else if (deliveryType === "pickup") {
       // ================= SELF-PICKUP VALIDATION =================
       const currentTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
-      
+
       // Check if store is open for pickup
       if (currentTime < store.openTime) {
         throw new Error(
           `Store opens at ${store.openTime}. Pickup available after opening time. ` +
-          `Please visit the store between ${store.openTime} - ${store.closeTime}`
+            `Please visit the store between ${store.openTime} - ${store.closeTime}`,
         );
       }
-      
+
       if (currentTime > store.closeTime) {
         throw new Error(
           `Store closed at ${store.closeTime}. Please visit tomorrow for pickup. ` +
-          `Store hours: ${store.openTime} - ${store.closeTime}`
+            `Store hours: ${store.openTime} - ${store.closeTime}`,
         );
       }
-      
+
       // No shipping fee for pickup
       shippingFee = 0;
-      distanceKm = userLatitude && userLongitude ? 
-        getDistanceKm(userLatitude, userLongitude, store.latitude, store.longitude) : null;
-      
+      distanceKm =
+        userLatitude && userLongitude
+          ? getDistanceKm(
+              userLatitude,
+              userLongitude,
+              store.latitude,
+              store.longitude,
+            )
+          : null;
+
       // Prepare pickup instructions
       pickupInstructions = {
         storeName: store.name,
         storeAddress: store.address || store.location,
         storeTiming: `${store.openTime} - ${store.closeTime}`,
-        message: "Please visit the store with your order number and OTP to collect your items.",
+        message:
+          "Please visit the store with your order number and OTP to collect your items.",
         whatToBring: ["Order Number", "OTP", "Valid ID proof"],
-        pickupWindow: "Same day pickup available during store hours"
+        pickupWindow: "Same day pickup available during store hours",
       };
-      
+
       console.log(`✅ Self-pickup order - Store: ${store.name}`);
     }
 
@@ -552,23 +569,24 @@ storeId = requestStoreId;
     // COD allowed only below ₹5000
     const isCOD = paymentMethod === "COD";
     if (isCOD && totalAmount >= 5000) {
-      throw new Error("Cash on Delivery is only available for orders below ₹5000");
+      throw new Error(
+        "Cash on Delivery is only available for orders below ₹5000",
+      );
     }
 
     // const otp = isCOD ? generateOtp() : null;
-   
 
-// Generate OTPs based on order type
-let customerDeliveryOtp = null;    // For delivery boy to verify at customer door
-let customerPickupOtp = null;       // For store admin to verify for pickup orders
-let deliveryBoyPickupOtp = null;    // For store admin to verify for delivery boy pickup
+    // Generate OTPs based on order type
+    let customerDeliveryOtp = null; // For delivery boy to verify at customer door
+    let customerPickupOtp = null; // For store admin to verify for pickup orders
+    let deliveryBoyPickupOtp = null; // For store admin to verify for delivery boy pickup
 
-if (deliveryType === "delivery") {
-  customerDeliveryOtp = generateOtp();      // Customer receives this for delivery
-  deliveryBoyPickupOtp = generateOtp();     // Delivery boy shows this at store
-} else if (deliveryType === "pickup") {
-  customerPickupOtp = generateOtp();        // Customer shows this at store
-}
+    if (deliveryType === "delivery") {
+      customerDeliveryOtp = generateOtp(); // Customer receives this for delivery
+      deliveryBoyPickupOtp = generateOtp(); // Delivery boy shows this at store
+    } else if (deliveryType === "pickup") {
+      customerPickupOtp = generateOtp(); // Customer shows this at store
+    }
 
     // ================= CREATE ORDER =================
     const order = await Order.create(
@@ -583,9 +601,9 @@ if (deliveryType === "delivery") {
         status: isCOD ? "confirmed" : "pending",
         paymentMethod,
         paymentStatus: "unpaid",
-         otp: customerDeliveryOtp,                 // For customer delivery
-  pickupOtp: customerPickupOtp,             // For customer pickup
-  deliveryPickupOtp: deliveryBoyPickupOtp, 
+        otp: customerDeliveryOtp, // For customer delivery
+        pickupOtp: customerPickupOtp, // For customer pickup
+        deliveryPickupOtp: deliveryBoyPickupOtp,
         otpVerified: false,
         confirmedAt: isCOD ? new Date() : null,
         deliverySlotId: assignedDeliverySlotId,
@@ -595,7 +613,7 @@ if (deliveryType === "delivery") {
         invoiceStatus: "pending",
         invoiceUrl: null,
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     // ================= ORDER ITEMS =================
@@ -644,16 +662,19 @@ if (deliveryType === "delivery") {
 
     // Add optional fields
     if (userAddress.house) addressData.house = userAddress.house;
-    if (userAddress.neighborhood) addressData.neighborhood = userAddress.neighborhood;
+    if (userAddress.neighborhood)
+      addressData.neighborhood = userAddress.neighborhood;
     if (userAddress.landmark) addressData.landmark = userAddress.landmark;
     if (userAddress.area) addressData.area = userAddress.area;
     if (userAddress.locality) addressData.locality = userAddress.locality;
-    if (userAddress.selectedAddressLine) addressData.selectedAddressLine = userAddress.selectedAddressLine;
+    if (userAddress.selectedAddressLine)
+      addressData.selectedAddressLine = userAddress.selectedAddressLine;
     if (userAddress.latitude) addressData.latitude = userAddress.latitude;
     if (userAddress.longitude) addressData.longitude = userAddress.longitude;
     if (userAddress.placeId) addressData.placeId = userAddress.placeId;
 
-    addressData.formattedAddress = userAddress.formattedAddress ||
+    addressData.formattedAddress =
+      userAddress.formattedAddress ||
       `${userAddress.addressLine}, ${userAddress.city}, ${userAddress.state} ${userAddress.zipCode}, ${userAddress.country}`;
 
     await OrderAddress.create(addressData, { transaction: t });
@@ -680,7 +701,7 @@ if (deliveryType === "delivery") {
           totalStock: remainingStock,
           stockStatus: remainingStock > 0 ? "In Stock" : "Out of Stock",
         },
-        { where: { id: itemData.variantId }, transaction: t }
+        { where: { id: itemData.variantId }, transaction: t },
       );
     }
 
@@ -692,31 +713,39 @@ if (deliveryType === "delivery") {
     // ================= COMMIT TRANSACTION =================
     await t.commit();
 
+    // AFTER order creation
+    await createOrderNotification({
+      userId: order.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status, // pending or confirmed
+    });
+
     // ================= GENERATE INVOICE AFTER COMMIT =================
     // let invoicePath = null;
     // const fs = require('fs');
     // const path = require('path');
-    
+
     // try {
     //   console.log("📄 Generating invoice for order:", order.orderNumber);
     //   console.log("Order items count:", orderItems.length);
-      
+
     //   // Ensure invoices directory exists
     //   const invoiceDir = path.join(process.cwd(), 'invoices');
     //   if (!fs.existsSync(invoiceDir)) {
     //     fs.mkdirSync(invoiceDir, { recursive: true });
     //   }
-      
+
     //   // Generate invoice using in-memory data
     //   invoicePath = await generateInvoice({
     //     order: order.toJSON ? order.toJSON() : order,
     //     orderItems: orderItems.map(item => item.toJSON ? item.toJSON() : item),
     //     address: addressData,
     //   });
-      
+
     //   if (invoicePath && fs.existsSync(invoicePath)) {
     //     console.log("✅ Invoice generated successfully at:", invoicePath);
-        
+
     //     // Update database with invoice info
     //     await Order.update(
     //       {
@@ -735,7 +764,7 @@ if (deliveryType === "delivery") {
     //       { where: { id: order.id } }
     //     );
     //   }
-      
+
     // } catch (err) {
     //   console.error("❌ Invoice generation failed:", err.message);
     //   await Order.update(
@@ -745,46 +774,44 @@ if (deliveryType === "delivery") {
     // }
 
     // Only generate invoice for COD
-let invoicePath = null;
-const fs = require("fs");
+    let invoicePath = null;
+    const fs = require("fs");
     const path = require("path");
 
-if (isCOD) {
-  try {
-    
+    if (isCOD) {
+      try {
+        const invoiceDir = path.join(process.cwd(), "invoices");
+        if (!fs.existsSync(invoiceDir)) {
+          fs.mkdirSync(invoiceDir, { recursive: true });
+        }
 
-    const invoiceDir = path.join(process.cwd(), "invoices");
-    if (!fs.existsSync(invoiceDir)) {
-      fs.mkdirSync(invoiceDir, { recursive: true });
+        invoicePath = await generateInvoice({
+          order: order.toJSON ? order.toJSON() : order,
+          orderItems: orderItems,
+          address: addressData,
+        });
+
+        if (invoicePath && fs.existsSync(invoicePath)) {
+          await Order.update(
+            {
+              invoiceUrl: invoicePath,
+              invoiceStatus: "generated",
+            },
+            { where: { id: order.id } },
+          );
+        }
+      } catch (err) {
+        await Order.update(
+          { invoiceStatus: "failed" },
+          { where: { id: order.id } },
+        );
+      }
     }
-
-    invoicePath = await generateInvoice({
-      order: order.toJSON ? order.toJSON() : order,
-      orderItems: orderItems,
-      address: addressData,
-    });
-
-    if (invoicePath && fs.existsSync(invoicePath)) {
-      await Order.update(
-        {
-          invoiceUrl: invoicePath,
-          invoiceStatus: "generated",
-        },
-        { where: { id: order.id } }
-      );
-    }
-  } catch (err) {
-    await Order.update(
-      { invoiceStatus: "failed" },
-      { where: { id: order.id } }
-    );
-  }
-}
 
     // ================= SEND EMAIL =================
     if (process.env.NODE_ENV !== "test") {
       const invoiceExists = invoicePath && fs.existsSync(invoicePath);
-      
+
       sendInvoiceEmail({
         orderNumber: order.orderNumber,
         orderAddress: addressData,
@@ -802,86 +829,88 @@ if (isCOD) {
     }
 
     // ================= RESPONSE =================
-const responseData = {
-  success: true,
-  orderNumber: order.orderNumber,
-  totalAmount: order.totalAmount,
-  subtotal: order.subtotal,
-  taxAmount: order.taxAmount,
-  shippingFee: order.shippingFee,
-  distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
-  deliveryType: deliveryType,
-};
-
-if (isCOD) {
-  if (deliveryType === "delivery") {
-    responseData.message = "Order placed for delivery with Cash on Delivery";
-    responseData.customerOtp = customerDeliveryOtp;        // Customer shows this to delivery boy
-    responseData.deliveryBoyPickupOtp = deliveryBoyPickupOtp; // Delivery boy shows this at store
-    responseData.deliverySlotId = assignedDeliverySlotId;
-    responseData.deliveryDate = assignedDeliveryDate;
-    responseData.instructions = {
-      customer: `Show OTP ${customerDeliveryOtp} to the delivery boy when receiving your order`,
-      deliveryBoy: `Show OTP ${deliveryBoyPickupOtp} at the store to collect the items`
+    const responseData = {
+      success: true,
+      orderNumber: order.orderNumber,
+      totalAmount: order.totalAmount,
+      subtotal: order.subtotal,
+      taxAmount: order.taxAmount,
+      shippingFee: order.shippingFee,
+      distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+      deliveryType: deliveryType,
     };
-  } else if (deliveryType === "pickup") {
-    responseData.message = "Order placed for self-pickup with Cash on Delivery";
-    responseData.pickupOtp = customerPickupOtp;  // Customer shows this at store
-    responseData.pickupInstructions = pickupInstructions;
-    responseData.instructions = {
-      customer: `Show OTP ${customerPickupOtp} at the store counter to collect your order`
+
+    if (isCOD) {
+      if (deliveryType === "delivery") {
+        responseData.message =
+          "Order placed for delivery with Cash on Delivery";
+        responseData.customerOtp = customerDeliveryOtp; // Customer shows this to delivery boy
+        responseData.deliveryBoyPickupOtp = deliveryBoyPickupOtp; // Delivery boy shows this at store
+        responseData.deliverySlotId = assignedDeliverySlotId;
+        responseData.deliveryDate = assignedDeliveryDate;
+        responseData.instructions = {
+          customer: `Show OTP ${customerDeliveryOtp} to the delivery boy when receiving your order`,
+          deliveryBoy: `Show OTP ${deliveryBoyPickupOtp} at the store to collect the items`,
+        };
+      } else if (deliveryType === "pickup") {
+        responseData.message =
+          "Order placed for self-pickup with Cash on Delivery";
+        responseData.pickupOtp = customerPickupOtp; // Customer shows this at store
+        responseData.pickupInstructions = pickupInstructions;
+        responseData.instructions = {
+          customer: `Show OTP ${customerPickupOtp} at the store counter to collect your order`,
+        };
+      }
+
+      return res.json(responseData);
+    }
+
+    // For online payments (Razorpay)
+    const razorpayOrder = await razorpay.orders.create({
+      amount: Math.round(order.totalAmount * 100),
+      currency: "INR",
+      receipt: order.orderNumber,
+      notes: {
+        orderNumber: order.orderNumber,
+        userId: userId.toString(),
+        distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+        deliveryType: deliveryType,
+      },
+    });
+
+    responseData.razorpayOrderId = razorpayOrder.id;
+    responseData.amount = razorpayOrder.amount;
+    responseData.currency = "INR";
+    responseData.key = process.env.RAZORPAY_KEY_ID;
+
+    // Add OTPs for online payment orders as well
+    if (deliveryType === "delivery") {
+      responseData.customerOtp = customerDeliveryOtp;
+      responseData.deliveryBoyPickupOtp = deliveryBoyPickupOtp;
+      responseData.deliverySlotId = assignedDeliverySlotId;
+      responseData.deliveryDate = assignedDeliveryDate;
+      responseData.instructions = {
+        customer: `Show OTP ${customerDeliveryOtp} to the delivery boy when receiving your order`,
+        deliveryBoy: `Show OTP ${deliveryBoyPickupOtp} at the store to collect the items`,
+      };
+    } else if (deliveryType === "pickup") {
+      responseData.pickupOtp = customerPickupOtp;
+      responseData.pickupInstructions = pickupInstructions;
+      responseData.instructions = {
+        customer: `Show OTP ${customerPickupOtp} at the store counter to collect your order`,
+      };
+    }
+
+    responseData.orderDetails = {
+      subtotal: order.subtotal,
+      taxAmount: order.taxAmount,
+      shippingFee: order.shippingFee,
+      totalAmount: order.totalAmount,
+      distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
+      deliveryType: deliveryType,
     };
-  }
-  
-  return res.json(responseData);
-}
 
-// For online payments (Razorpay)
-const razorpayOrder = await razorpay.orders.create({
-  amount: Math.round(order.totalAmount * 100),
-  currency: "INR",
-  receipt: order.orderNumber,
-  notes: {
-    orderNumber: order.orderNumber,
-    userId: userId.toString(),
-    distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
-    deliveryType: deliveryType,
-  },
-});
-
-responseData.razorpayOrderId = razorpayOrder.id;
-responseData.amount = razorpayOrder.amount;
-responseData.currency = "INR";
-responseData.key = process.env.RAZORPAY_KEY_ID;
-
-// Add OTPs for online payment orders as well
-if (deliveryType === "delivery") {
-  responseData.customerOtp = customerDeliveryOtp;
-  responseData.deliveryBoyPickupOtp = deliveryBoyPickupOtp;
-  responseData.deliverySlotId = assignedDeliverySlotId;
-  responseData.deliveryDate = assignedDeliveryDate;
-  responseData.instructions = {
-    customer: `Show OTP ${customerDeliveryOtp} to the delivery boy when receiving your order`,
-    deliveryBoy: `Show OTP ${deliveryBoyPickupOtp} at the store to collect the items`
-  };
-} else if (deliveryType === "pickup") {
-  responseData.pickupOtp = customerPickupOtp;
-  responseData.pickupInstructions = pickupInstructions;
-  responseData.instructions = {
-    customer: `Show OTP ${customerPickupOtp} at the store counter to collect your order`
-  };
-}
-
-responseData.orderDetails = {
-  subtotal: order.subtotal,
-  taxAmount: order.taxAmount,
-  shippingFee: order.shippingFee,
-  totalAmount: order.totalAmount,
-  distanceKm: distanceKm ? distanceKm.toFixed(2) : "N/A",
-  deliveryType: deliveryType,
-};
-
-return res.json(responseData);
+    return res.json(responseData);
   } catch (err) {
     if (t && !t.finished) await t.rollback();
     console.error("PLACE ORDER ERROR:", err);
@@ -891,7 +920,6 @@ return res.json(responseData);
     });
   }
 };
-
 
 // exports.verifyRazorpayPayment = async (req, res) => {
 //   const t = await sequelize.transaction();
@@ -985,7 +1013,7 @@ return res.json(responseData);
 //   deliveryType: order.deliveryType,
 //   invoicePath: invoicePath || null,
 // }).catch(console.error);
-    
+
 //     await CartItem.destroy({
 //       where: { userId: order.userId },
 //       transaction: t,
@@ -1020,6 +1048,7 @@ exports.verifyRazorpayPayment = async (req, res) => {
 
     // ================= VERIFY SIGNATURE =================
     const body = razorpay_order_id + "|" + razorpay_payment_id;
+
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(body)
@@ -1029,31 +1058,25 @@ exports.verifyRazorpayPayment = async (req, res) => {
       throw new Error("Payment verification failed");
     }
 
-    // ================= FETCH ORDER WITH ALL DATA =================
+    // ================= FETCH ORDER =================
     let order = await Order.findOne({
       where: { orderNumber },
-      include: [
-        { 
-          model: OrderItem,
-          required: true,  // Ensure items exist
-        }
-      ],
+      include: [{ model: OrderItem, required: true }],
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
 
     if (!order) throw new Error("Order not found");
-    if (!order.OrderItems || order.OrderItems.length === 0) {
+    if (!order.OrderItems?.length)
       throw new Error("No order items found");
-    }
 
     // ================= ALREADY PAID =================
     if (order.paymentStatus === "paid") {
       await t.commit();
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: "Payment already verified",
-        invoiceGenerated: !!order.invoiceUrl 
+        invoiceGenerated: !!order.invoiceUrl,
       });
     }
 
@@ -1064,7 +1087,7 @@ exports.verifyRazorpayPayment = async (req, res) => {
         paymentStatus: "paid",
         transactionId: razorpay_payment_id,
         paidAt: new Date(),
-        confirmedAt: new Date(), // Add confirmed timestamp
+        confirmedAt: new Date(),
       },
       { transaction: t }
     );
@@ -1075,39 +1098,49 @@ exports.verifyRazorpayPayment = async (req, res) => {
       transaction: t,
     });
 
-    // ✅ IMPORTANT: COMMIT BEFORE INVOICE GENERATION
     await t.commit();
 
-    // ============================================================
-    // 🔥 RE-FETCH COMPLETE ORDER DATA WITH PROPER ASSOCIATIONS
-    // ============================================================
-    const completeOrder = await Order.findOne({
-      where: { id: order.id },
-      include: [
-        {
-          model: OrderItem,
-          required: true,
-        }
-      ],
+    // ================= NOTIFICATION =================
+    await createOrderNotification({
+      userId: order.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
     });
 
-    if (!completeOrder || !completeOrder.OrderItems || completeOrder.OrderItems.length === 0) {
-      console.error("❌ Failed to fetch order items for invoice");
+    // ================= RE-FETCH ORDER =================
+    const completeOrder = await Order.findOne({
+      where: { id: order.id },
+      include: [{ model: OrderItem, required: true }],
+    });
+
+    if (!completeOrder?.OrderItems?.length) {
       return res.json({
         success: true,
-        message: "Payment verified but invoice generation failed - no items found",
+        message: "Payment verified but invoice failed",
         invoiceGenerated: false,
       });
     }
 
-    // Fetch address
     const address = await OrderAddress.findOne({
       where: { orderId: completeOrder.id },
     });
 
-    if (!address) {
-      console.error("❌ Address not found for order:", completeOrder.orderNumber);
-    }
+    // ================= FIX NUMERIC TYPES 🔥 =================
+    const orderItemsForInvoice = completeOrder.OrderItems.map((item) => {
+      const i = item.toJSON();
+
+      return {
+        ...i,
+        basePrice: Number(i.basePrice || 0),
+        finalPerUnit: Number(i.finalPerUnit || 0),
+        totalPrice: Number(i.totalPrice || 0),
+        subTotal: Number(i.subTotal || 0),
+        taxTotal: Number(i.taxTotal || 0),
+        gstPerUnit: Number(i.gstPerUnit || 0),
+        quantity: Number(i.quantity || 0),
+      };
+    });
 
     // ================= GENERATE INVOICE =================
     const fs = require("fs");
@@ -1116,39 +1149,20 @@ exports.verifyRazorpayPayment = async (req, res) => {
 
     try {
       const invoiceDir = path.join(process.cwd(), "invoices");
+
       if (!fs.existsSync(invoiceDir)) {
         fs.mkdirSync(invoiceDir, { recursive: true });
       }
 
-      console.log("📄 Generating invoice for ONLINE order:", completeOrder.orderNumber);
-      console.log("Order items count:", completeOrder.OrderItems.length);
+      console.log("📄 Generating invoice:", completeOrder.orderNumber);
 
-      // ✅ Prepare order items with all snapshots (they should already be in the database)
-      const orderItemsForInvoice = completeOrder.OrderItems.map(item => {
-        const itemJson = item.toJSON();
-        
-        // Log to debug what's available
-        console.log(`Item ${item.id}: productSnapshot exists: ${!!itemJson.productSnapshot}`);
-        console.log(`Item ${item.id}: variantSnapshot exists: ${!!itemJson.variantSnapshot}`);
-        
-        return itemJson;
-      });
-
-      // Generate invoice
       invoicePath = await generateInvoice({
         order: completeOrder.toJSON(),
-        orderItems: orderItemsForInvoice,
+        orderItems: orderItemsForInvoice, // ✅ FIXED HERE
         address: address?.toJSON(),
       });
 
-      console.log("Invoice generation returned:", invoicePath);
-
-      // ✅ Verify file exists and is accessible
       if (invoicePath && fs.existsSync(invoicePath)) {
-        const stats = fs.statSync(invoicePath);
-        console.log(`✅ Invoice file created successfully. Size: ${stats.size} bytes`);
-
-        // Update order with invoice info
         await Order.update(
           {
             invoiceUrl: invoicePath,
@@ -1156,54 +1170,41 @@ exports.verifyRazorpayPayment = async (req, res) => {
           },
           { where: { id: completeOrder.id } }
         );
-        
-        console.log("✅ Invoice URL saved to database");
+
+        console.log("✅ Invoice generated");
       } else {
-        console.error("❌ Invoice file not found at path:", invoicePath);
-        await Order.update(
-          { invoiceStatus: "failed" },
-          { where: { id: completeOrder.id } }
-        );
-        invoicePath = null;
+        throw new Error("Invoice file not created");
       }
     } catch (err) {
-      console.error("❌ Invoice generation failed:", err);
-      console.error("Error stack:", err.stack);
-      
+      console.error("❌ Invoice generation failed:", err.message);
+
       await Order.update(
         { invoiceStatus: "failed" },
         { where: { id: completeOrder.id } }
       );
+
       invoicePath = null;
     }
 
     // ================= SEND EMAIL =================
     try {
-      console.log("📧 Sending invoice email...");
-      console.log("Invoice path for email:", invoicePath);
-      console.log("File exists check:", invoicePath ? fs.existsSync(invoicePath) : false);
+      console.log("📧 Sending email...");
 
-      // ✅ Prepare address data for email
-      const addressForEmail = address?.toJSON() || null;
-      
-      // ✅ Send email with proper data
       await sendInvoiceEmail({
         orderNumber: completeOrder.orderNumber,
-        orderAddress: addressForEmail,
-        orderItems: completeOrder.OrderItems.map(i => i.toJSON()),
-        totalAmount: completeOrder.totalAmount,
-        subtotal: completeOrder.subtotal,
-        taxAmount: completeOrder.taxAmount,
-        shippingFee: completeOrder.shippingFee,
+        orderAddress: address?.toJSON() || null,
+        orderItems: orderItemsForInvoice, // ✅ FIXED HERE ALSO
+        totalAmount: Number(completeOrder.totalAmount || 0),
+        subtotal: Number(completeOrder.subtotal || 0),
+        taxAmount: Number(completeOrder.taxAmount || 0),
+        shippingFee: Number(completeOrder.shippingFee || 0),
         deliveryType: completeOrder.deliveryType,
-        invoicePath: invoicePath, // This should be the full path
+        invoicePath: invoicePath,
       });
 
-      console.log("✅ Email sent successfully");
+      console.log("✅ Email sent");
     } catch (emailErr) {
-      console.error("❌ Email sending failed:", emailErr);
-      console.error("Email error details:", emailErr.message);
-      // Don't throw here - payment is already verified
+      console.error("❌ Email failed:", emailErr.message);
     }
 
     // ================= RESPONSE =================
@@ -1211,13 +1212,12 @@ exports.verifyRazorpayPayment = async (req, res) => {
       success: true,
       message: "Payment verified & invoice processed",
       invoiceGenerated: !!invoicePath,
-      invoicePath: invoicePath, // Optional: for debugging
     });
 
   } catch (err) {
     if (t && !t.finished) await t.rollback();
+
     console.error("VERIFY PAYMENT ERROR:", err);
-    console.error("Error stack:", err.stack);
 
     return res.status(400).json({
       success: false,
@@ -1225,7 +1225,6 @@ exports.verifyRazorpayPayment = async (req, res) => {
     });
   }
 };
-
 
 exports.razorpayWebhook = async (req, res) => {
   const event = JSON.parse(req.body.toString());
@@ -1292,20 +1291,20 @@ exports.handlePaymentCaptured = async (event) => {
     order.paidAt = new Date();
     await order.save({ transaction: t });
 
-    // Deduct stock
-    for (const item of order.OrderItems) {
-      await VariantSize.decrement("stock", {
-        by: item.quantity,
-        where: { id: item.sizeId },
-        transaction: t,
-      });
+    // // Deduct stock
+    // for (const item of order.OrderItems) {
+    //   await VariantSize.decrement("stock", {
+    //     by: item.quantity,
+    //     where: { id: item.sizeId },
+    //     transaction: t,
+    //   });
 
-      await ProductVariant.decrement("totalStock", {
-        by: item.quantity,
-        where: { id: item.variantId },
-        transaction: t,
-      });
-    }
+    //   await ProductVariant.decrement("totalStock", {
+    //     by: item.quantity,
+    //     where: { id: item.variantId },
+    //     transaction: t,
+    //   });
+    // }
 
     // Clear cart
     await CartItem.destroy({
@@ -1388,19 +1387,19 @@ exports.handleRefundProcessed = async (event) => {
     // -----------------------------
     // Restore stock AFTER refund success
     // -----------------------------
-    for (const item of order.OrderItems) {
-      await VariantSize.increment("stock", {
-        by: item.quantity,
-        where: { id: item.sizeId },
-        transaction: t,
-      });
+    // for (const item of order.OrderItems) {
+    //   await VariantSize.increment("stock", {
+    //     by: item.quantity,
+    //     where: { id: item.sizeId },
+    //     transaction: t,
+    //   });
 
-      await ProductVariant.increment("totalStock", {
-        by: item.quantity,
-        where: { id: item.variantId },
-        transaction: t,
-      });
-    }
+    //   await ProductVariant.increment("totalStock", {
+    //     by: item.quantity,
+    //     where: { id: item.variantId },
+    //     transaction: t,
+    //   });
+    // }
 
     await t.commit();
 
@@ -1409,59 +1408,5 @@ exports.handleRefundProcessed = async (event) => {
     await t.rollback();
     console.error("Refund webhook error:", err);
     throw err;
-  }
-};
-
-/**
- * Test Razorpay Configuration
- */
-exports.testRazorpayConfig = async (req, res) => {
-  try {
-    // Test crypto module
-    const testCrypto = () => {
-      const testHmac = crypto
-        .createHmac("sha256", "test")
-        .update("test")
-        .digest("hex");
-      return !!testHmac;
-    };
-
-    // Test Razorpay instance
-    const testRazorpay = async () => {
-      try {
-        await razorpay.orders.create({
-          amount: 100,
-          currency: "INR",
-          receipt: "test_receipt",
-        });
-        return true;
-      } catch (error) {
-        console.error("Razorpay test failed:", error.message);
-        return false;
-      }
-    };
-
-    const [cryptoWorks, razorpayWorks] = await Promise.all([
-      testCrypto(),
-      testRazorpay(),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        crypto: cryptoWorks ? "working" : "failed",
-        razorpay: razorpayWorks ? "working" : "failed",
-        config: {
-          keyIdPresent: !!process.env.RAZORPAY_KEY_ID,
-          keySecretPresent: !!process.env.RAZORPAY_KEY_SECRET,
-          webhookSecretPresent: !!process.env.RAZORPAY_WEBHOOK_SECRET,
-        },
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
   }
 };

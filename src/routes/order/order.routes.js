@@ -6,7 +6,7 @@ const { protected } = require("../../middleware/user.logout.middleware");
 const {getActiveOrders} = require("../../controllers/userMyOrdersApi/getActiveOrders.controller");
 const {getCancelledOrders} = require("../../controllers/userMyOrdersApi/getCancelOrder.controller")
 const {getCompletedOrders} = require("../../controllers/userMyOrdersApi/getCompletedOrders.controller");
-const {cancelOrder, cancelPickupOrder, adminCancelOrder} = require("../../controllers/userMyOrdersApi/cancelOrder.controller");
+const {cancelOrder, cancelPickupOrder, adminCancelOrder} = require("../../controllers/order/cancelOrder.controller");
 const {returnOrder} = require("../../controllers/userMyOrdersApi/returnOrder.controller");
 const {completeRefund} = require("../../controllers/adminUpdateOrderStatusApi/completeRefund.controller");
 

@@ -5,8 +5,11 @@ const {
   StoreInventory,
   ProductVariant,
   OrderAddress,
-  Store
+  Store,
 } = require("../../models");
+const {
+  createOrderNotification,
+} = require("../../services/notificatonInApp.service");
 
 // ✅ Try to import DeliveryBoy, with fallback
 let DeliveryBoy;
@@ -21,16 +24,19 @@ try {
  * Helper function to send notifications
  */
 async function sendOrderStatusNotification(order, status, notes) {
-  console.log(`Notification: Order ${order.orderNumber} status changed to ${status}`);
+  console.log(
+    `Notification: Order ${order.orderNumber} status changed to ${status}`,
+  );
 }
 
 /**
  * Helper function to notify delivery boy
  */
 async function notifyDeliveryBoy(deliveryBoy, order) {
-  console.log(`Notification: Delivery boy ${deliveryBoy.name} assigned to order ${order.orderNumber}`);
+  console.log(
+    `Notification: Delivery boy ${deliveryBoy.name} assigned to order ${order.orderNumber}`,
+  );
 }
-
 
 /**
  * ADMIN: Update order status with proper flow
@@ -42,13 +48,13 @@ exports.updateOrderStatus = async (req, res) => {
 
     const order = await Order.findOne({
       where: { orderNumber },
-      include: [{ model: Store, as: "store", attributes: ["id", "name"] }]
+      include: [{ model: Store, as: "store", attributes: ["id", "name"] }],
     });
 
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: "Order not found"
+        message: "Order not found",
       });
     }
 
@@ -69,7 +75,7 @@ exports.updateOrderStatus = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: `Cannot transition from ${order.status} to ${status}`
+        message: `Cannot transition from ${order.status} to ${status}`,
       });
     }
 
@@ -113,6 +119,13 @@ exports.updateOrderStatus = async (req, res) => {
 
     await order.update(updateData);
 
+    await createOrderNotification({
+      userId: order.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status,
+    });
+
     res.json({
       success: true,
       message: `Order status updated to ${status}`,
@@ -120,15 +133,14 @@ exports.updateOrderStatus = async (req, res) => {
         orderNumber: order.orderNumber,
         status: order.status,
         storeName: order.store?.name,
-        ...updateData
-      }
+        ...updateData,
+      },
     });
-
   } catch (err) {
     console.error("Update order status error:", err);
     res.status(500).json({
       success: false,
-      message: err.message
+      message: err.message,
     });
   }
 };
@@ -144,7 +156,7 @@ exports.assignDeliveryBoy = async (req, res) => {
     if (!deliveryBoyId) {
       return res.status(400).json({
         success: false,
-        message: "Delivery boy ID is required"
+        message: "Delivery boy ID is required",
       });
     }
 
@@ -153,21 +165,28 @@ exports.assignDeliveryBoy = async (req, res) => {
     if (!deliveryBoy) {
       return res.status(404).json({
         success: false,
-        message: "Delivery boy not found"
+        message: "Delivery boy not found",
       });
     }
 
     if (order.status !== "packed") {
       return res.status(400).json({
         success: false,
-        message: `Cannot assign delivery boy. Order status is "${order.status}". It should be "packed" first.`
+        message: `Cannot assign delivery boy. Order status is "${order.status}". It should be "packed" first.`,
       });
     }
 
     await order.update({
       status: "dispatched",
       deliveryBoyId,
-      dispatchedAt: new Date()
+      dispatchedAt: new Date(),
+    });
+
+     await createOrderNotification({
+      userId: order.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
     });
 
     await notifyDeliveryBoy(deliveryBoy, order);
@@ -180,25 +199,23 @@ exports.assignDeliveryBoy = async (req, res) => {
           orderNumber: order.orderNumber,
           status: order.status,
           dispatchedAt: order.dispatchedAt,
-          storeName: order.store?.name
+          storeName: order.store?.name,
         },
         deliveryBoy: {
           id: deliveryBoy.id,
           name: deliveryBoy.name,
-          mobile: deliveryBoy.mobile
-        }
-      }
+          mobile: deliveryBoy.mobile,
+        },
+      },
     });
-
   } catch (err) {
     console.error("Assign delivery boy error:", err);
     res.status(500).json({
       success: false,
-      message: err.message
+      message: err.message,
     });
   }
 };
-
 
 /**
  * DELIVERY BOY: Mark as delivered with OTP verification
@@ -212,14 +229,14 @@ exports.markAsDelivered = async (req, res) => {
     if (!deliveryBoyId) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized - Delivery boy not authenticated"
+        message: "Unauthorized - Delivery boy not authenticated",
       });
     }
 
     if (!otp) {
       return res.status(400).json({
         success: false,
-        message: "OTP is required for delivery confirmation"
+        message: "OTP is required for delivery confirmation",
       });
     }
 
@@ -227,7 +244,7 @@ exports.markAsDelivered = async (req, res) => {
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: "Order not found"
+        message: "Order not found",
       });
     }
 
@@ -235,7 +252,7 @@ exports.markAsDelivered = async (req, res) => {
     if (order.deliveryBoyId !== deliveryBoyId) {
       return res.status(403).json({
         success: false,
-        message: "You are not assigned to this order"
+        message: "You are not assigned to this order",
       });
     }
 
@@ -243,7 +260,7 @@ exports.markAsDelivered = async (req, res) => {
     if (order.status !== "out_for_delivery") {
       return res.status(400).json({
         success: false,
-        message: `Cannot deliver. Order status is "${order.status}". It should be "out_for_delivery" first.`
+        message: `Cannot deliver. Order status is "${order.status}". It should be "out_for_delivery" first.`,
       });
     }
 
@@ -251,14 +268,14 @@ exports.markAsDelivered = async (req, res) => {
     if (order.otp !== otp) {
       return res.status(400).json({
         success: false,
-        message: "Invalid OTP"
+        message: "Invalid OTP",
       });
     }
 
     const updateData = {
       status: "delivered",
       otpVerified: true,
-      deliveredAt: new Date()
+      deliveredAt: new Date(),
     };
 
     // For COD orders, mark as completed immediately
@@ -269,112 +286,126 @@ exports.markAsDelivered = async (req, res) => {
     }
 
     await order.update(updateData);
+  
+    await createOrderNotification({
+      userId: order.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+    });
 
     res.json({
       success: true,
-      message: order.paymentMethod === "COD" 
-        ? "Order delivered successfully. Payment collected." 
-        : "Order delivered successfully.",
+      message:
+        order.paymentMethod === "COD"
+          ? "Order delivered successfully. Payment collected."
+          : "Order delivered successfully.",
       data: {
         orderNumber: order.orderNumber,
         status: updateData.status,
-        deliveredAt: updateData.deliveredAt || new Date()
-      }
+        deliveredAt: updateData.deliveredAt || new Date(),
+      },
     });
   } catch (err) {
     console.error("Mark as delivered error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: err.message 
+    res.status(500).json({
+      success: false,
+      message: err.message,
     });
   }
 };
 
-/**
- * ADMIN: Cancel order (only before dispatch)
- */
-exports.cancelOrder = async (req, res) => {
-  try {
-    const { orderNumber } = req.params;
-    const { cancellationReason } = req.body;
+// /**
+//  * ADMIN: Cancel order (only before dispatch)
+//  */
+// exports.cancelOrder = async (req, res) => {
+//   try {
+//     const { orderNumber } = req.params;
+//     const { cancellationReason } = req.body;
 
-    const order = await Order.findOne({ where: { orderNumber } });
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found"
-      });
-    }
+//     const order = await Order.findOne({ where: { orderNumber } });
+//     if (!order) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Order not found",
+//       });
+//     }
 
-    // Check if cancellation is allowed (only before dispatched)
-    const cancellableStatuses = ["pending", "confirmed", "picking", "packed"];
-    if (!cancellableStatuses.includes(order.status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Order cannot be cancelled. Current status: ${order.status}. Cancellation only allowed before dispatch.`
-      });
-    }
+//     // Check if cancellation is allowed (only before dispatched)
+//     const cancellableStatuses = ["pending", "confirmed", "picking", "packed"];
+//     if (!cancellableStatuses.includes(order.status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Order cannot be cancelled. Current status: ${order.status}. Cancellation only allowed before dispatch.`,
+//       });
+//     }
 
-    // Release delivery slot if assigned
-    if (order.deliverySlotId) {
-      const slot = await DeliverySlot.findByPk(order.deliverySlotId);
-      if (slot) {
-        await slot.decrement("currentOrders");
-        if (slot.currentOrders - 1 < slot.maxCapacity) {
-          await slot.update({ status: "available" });
-        }
-      }
-    }
+//     // Release delivery slot if assigned
+//     if (order.deliverySlotId) {
+//       const slot = await DeliverySlot.findByPk(order.deliverySlotId);
+//       if (slot) {
+//         await slot.decrement("currentOrders");
+//         if (slot.currentOrders - 1 < slot.maxCapacity) {
+//           await slot.update({ status: "available" });
+//         }
+//       }
+//     }
 
-    // Restore inventory stock
-    const orderItems = await OrderItem.findAll({
-      where: { orderId: order.id }
-    });
-    
-    for (const item of orderItems) {
-      await StoreInventory.increment("stock", {
-        by: item.quantity,
-        where: { variantId: item.variantId }
-      });
+//     // Restore inventory stock
+//     const orderItems = await OrderItem.findAll({
+//       where: { orderId: order.id },
+//     });
 
-      // Update variant total stock
-      const remainingStock = await StoreInventory.sum("stock", {
-        where: { variantId: item.variantId }
-      });
+//     for (const item of orderItems) {
+//       await StoreInventory.increment("stock", {
+//         by: item.quantity,
+//         where: { variantId: item.variantId },
+//       });
 
-      await ProductVariant.update(
-        {
-          totalStock: remainingStock,
-          stockStatus: remainingStock > 0 ? "In Stock" : "Out of Stock"
-        },
-        { where: { id: item.variantId } }
-      );
-    }
+//       // Update variant total stock
+//       const remainingStock = await StoreInventory.sum("stock", {
+//         where: { variantId: item.variantId },
+//       });
 
-    await order.update({
-      status: "cancelled",
-      cancelledAt: new Date(),
-      cancellationReason: cancellationReason || "Cancelled by admin"
-    });
+//       await ProductVariant.update(
+//         {
+//           totalStock: remainingStock,
+//           stockStatus: remainingStock > 0 ? "In Stock" : "Out of Stock",
+//         },
+//         { where: { id: item.variantId } },
+//       );
+//     }
 
-    res.json({
-      success: true,
-      message: "Order cancelled successfully",
-      data: {
-        orderNumber: order.orderNumber,
-        status: order.status,
-        cancelledAt: order.cancelledAt,
-        cancellationReason: order.cancellationReason
-      }
-    });
-  } catch (err) {
-    console.error("Cancel order error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: err.message 
-    });
-  }
-};
+//     await order.update({
+//       status: "cancelled",
+//       cancelledAt: new Date(),
+//       cancellationReason: cancellationReason || "Cancelled by admin",
+//     });
+//      await createOrderNotification({
+//       userId: order.userId,
+//       orderId: order.id,
+//       orderNumber: order.orderNumber,
+//       status,
+//     });
+
+//     res.json({
+//       success: true,
+//       message: "Order cancelled successfully",
+//       data: {
+//         orderNumber: order.orderNumber,
+//         status: order.status,
+//         cancelledAt: order.cancelledAt,
+//         cancellationReason: order.cancellationReason,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Cancel order error:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: err.message,
+//     });
+//   }
+// };
 
 /**
  * GET: Order timeline for customer view
@@ -382,20 +413,28 @@ exports.cancelOrder = async (req, res) => {
 exports.getOrderTimeline = async (req, res) => {
   try {
     const { orderNumber } = req.params;
-    
-    const order = await Order.findOne({ 
+
+    const order = await Order.findOne({
       where: { orderNumber },
       attributes: [
-        "orderNumber", "status", "createdAt", "confirmedAt", 
-        "pickingAt", "packedAt", "dispatchedAt", "outForDeliveryAt",
-        "deliveredAt", "completedAt", "cancelledAt"
-      ]
+        "orderNumber",
+        "status",
+        "createdAt",
+        "confirmedAt",
+        "pickingAt",
+        "packedAt",
+        "dispatchedAt",
+        "outForDeliveryAt",
+        "deliveredAt",
+        "completedAt",
+        "cancelledAt",
+      ],
     });
-    
+
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: "Order not found"
+        message: "Order not found",
       });
     }
 
@@ -409,51 +448,51 @@ exports.getOrderTimeline = async (req, res) => {
       out_for_delivery: "Out for Delivery",
       delivered: "Delivered",
       completed: "Completed",
-      cancelled: "Cancelled"
+      cancelled: "Cancelled",
     };
 
     const timeline = [];
-    
+
     if (order.confirmedAt) {
-      timeline.push({ 
-        status: "Confirmed", 
-        date: order.confirmedAt, 
-        description: "Your order has been confirmed" 
+      timeline.push({
+        status: "Confirmed",
+        date: order.confirmedAt,
+        description: "Your order has been confirmed",
       });
     }
     if (order.pickingAt) {
-      timeline.push({ 
-        status: "Preparing", 
-        date: order.pickingAt, 
-        description: "Items are being picked and packed" 
+      timeline.push({
+        status: "Preparing",
+        date: order.pickingAt,
+        description: "Items are being picked and packed",
       });
     }
     if (order.packedAt) {
-      timeline.push({ 
-        status: "Ready", 
-        date: order.packedAt, 
-        description: "Order is packed and ready for dispatch" 
+      timeline.push({
+        status: "Ready",
+        date: order.packedAt,
+        description: "Order is packed and ready for dispatch",
       });
     }
     if (order.dispatchedAt) {
-      timeline.push({ 
-        status: "Dispatched", 
-        date: order.dispatchedAt, 
-        description: "Order handed over to delivery partner" 
+      timeline.push({
+        status: "Dispatched",
+        date: order.dispatchedAt,
+        description: "Order handed over to delivery partner",
       });
     }
     if (order.outForDeliveryAt) {
-      timeline.push({ 
-        status: "Out for Delivery", 
-        date: order.outForDeliveryAt, 
-        description: "Delivery rider is on the way" 
+      timeline.push({
+        status: "Out for Delivery",
+        date: order.outForDeliveryAt,
+        description: "Delivery rider is on the way",
       });
     }
     if (order.deliveredAt) {
-      timeline.push({ 
-        status: "Delivered", 
-        date: order.deliveredAt, 
-        description: "Order delivered successfully" 
+      timeline.push({
+        status: "Delivered",
+        date: order.deliveredAt,
+        description: "Order delivered successfully",
       });
     }
 
@@ -464,14 +503,16 @@ exports.getOrderTimeline = async (req, res) => {
         currentStatus: order.status,
         customerFriendlyStatus: customerStatusMap[order.status],
         timeline,
-        canCancel: ["pending", "confirmed", "picking", "packed"].includes(order.status)
-      }
+        canCancel: ["pending", "confirmed", "picking", "packed"].includes(
+          order.status,
+        ),
+      },
     });
   } catch (err) {
     console.error("Get order timeline error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: err.message 
+    res.status(500).json({
+      success: false,
+      message: err.message,
     });
   }
 };
@@ -483,11 +524,11 @@ exports.getMyAssignedOrders = async (req, res) => {
   try {
     // Get delivery boy ID from authenticated user
     const deliveryBoyId = req.deliveryBoy?.id;
-    
+
     if (!deliveryBoyId) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized - Delivery boy not authenticated"
+        message: "Unauthorized - Delivery boy not authenticated",
       });
     }
 
@@ -497,7 +538,7 @@ exports.getMyAssignedOrders = async (req, res) => {
     const orders = await Order.findAll({
       where: {
         deliveryBoyId: deliveryBoyId,
-        status: ["dispatched", "out_for_delivery"] // Only show active deliveries
+        status: ["dispatched", "out_for_delivery"], // Only show active deliveries
       },
       include: [
         {
@@ -514,13 +555,13 @@ exports.getMyAssignedOrders = async (req, res) => {
             "latitude",
             "longitude",
             "placeId",
-            "formattedAddress"
-          ]
+            "formattedAddress",
+          ],
         },
         {
           model: OrderItem,
           as: "OrderItems",
-          attributes: ["productName", "quantity", "totalPrice"]
+          attributes: ["productName", "quantity", "totalPrice"],
         },
         {
           model: Store,
@@ -534,16 +575,19 @@ exports.getMyAssignedOrders = async (req, res) => {
             "isActive",
             "openTime",
             "closeTime",
-            "avgDeliveryTime"
+            "avgDeliveryTime",
             // ❌ NO 'address' field here because it doesn't exist in the model
-          ]
-        }
+          ],
+        },
       ],
-      order: [["deliveryDate", "ASC"], ["deliverySlotId", "ASC"]]
+      order: [
+        ["deliveryDate", "ASC"],
+        ["deliverySlotId", "ASC"],
+      ],
     });
 
     // Format orders with navigation links and BOTH OTPs
-    const formattedOrders = orders.map(order => {
+    const formattedOrders = orders.map((order) => {
       const orderJson = order.toJSON();
       const address = orderJson.address;
       const store = orderJson.store;
@@ -554,20 +598,25 @@ exports.getMyAssignedOrders = async (req, res) => {
           address.navigationLinks = {
             googleMaps: `https://www.google.com/maps?q=${address.latitude},${address.longitude}`,
             directions: `https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`,
-            waze: `https://waze.com/ul?ll=${address.latitude},${address.longitude}&navigate=yes`
+            waze: `https://waze.com/ul?ll=${address.latitude},${address.longitude}&navigate=yes`,
           };
         } else if (address.formattedAddress) {
           const encodedAddress = encodeURIComponent(address.formattedAddress);
           address.navigationLinks = {
             googleMaps: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-            directions: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`
+            directions: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
           };
         }
       }
 
       // Generate store location navigation links (for dispatched orders)
       let storeLocation = null;
-      if (order.status === "dispatched" && store && store.latitude && store.longitude) {
+      if (
+        order.status === "dispatched" &&
+        store &&
+        store.latitude &&
+        store.longitude
+      ) {
         storeLocation = {
           id: store.id,
           name: store.name,
@@ -576,23 +625,26 @@ exports.getMyAssignedOrders = async (req, res) => {
           deliveryRadius: store.deliveryRadius,
           avgDeliveryTime: store.avgDeliveryTime,
           isActive: store.isActive,
-          timing: store.openTime && store.closeTime ? `${store.openTime} - ${store.closeTime}` : null,
+          timing:
+            store.openTime && store.closeTime
+              ? `${store.openTime} - ${store.closeTime}`
+              : null,
           coordinates: {
             lat: store.latitude,
-            lng: store.longitude
+            lng: store.longitude,
           },
           navigationLinks: {
             googleMaps: `https://www.google.com/maps?q=${store.latitude},${store.longitude}`,
             directions: `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`,
-            waze: `https://waze.com/ul?ll=${store.latitude},${store.longitude}&navigate=yes`
-          }
+            waze: `https://waze.com/ul?ll=${store.latitude},${store.longitude}&navigate=yes`,
+          },
         };
       }
 
       // Determine which OTP is currently active
       const isStorePickupCompleted = order.deliveryPickupOtpVerified === 1;
       const isCustomerDeliveryCompleted = order.otpVerified === 1;
-      
+
       let currentStep = "";
       let currentOtp = "";
       let currentOtpVerified = false;
@@ -602,12 +654,16 @@ exports.getMyAssignedOrders = async (req, res) => {
         currentStep = "STORE_PICKUP";
         currentOtp = order.deliveryPickupOtp;
         currentOtpVerified = isStorePickupCompleted;
-        nextAction = isStorePickupCompleted ? "Proceed to customer delivery" : "Visit store and provide this OTP to collect items";
+        nextAction = isStorePickupCompleted
+          ? "Proceed to customer delivery"
+          : "Visit store and provide this OTP to collect items";
       } else if (order.status === "out_for_delivery") {
         currentStep = "CUSTOMER_DELIVERY";
         currentOtp = order.otp;
         currentOtpVerified = isCustomerDeliveryCompleted;
-        nextAction = isCustomerDeliveryCompleted ? "Delivery completed" : "Reach customer location and verify OTP to complete delivery";
+        nextAction = isCustomerDeliveryCompleted
+          ? "Delivery completed"
+          : "Reach customer location and verify OTP to complete delivery";
       }
 
       return {
@@ -617,73 +673,86 @@ exports.getMyAssignedOrders = async (req, res) => {
         deliverySlot: orderJson.deliverySlotId,
         totalAmount: orderJson.totalAmount,
         paymentMethod: orderJson.paymentMethod,
-        
+
         // ✅ BOTH OTPs included here
         otpInfo: {
           // Store pickup OTP (for collecting items from store)
           storePickupOtp: orderJson.deliveryPickupOtp,
           storePickupOtpVerified: isStorePickupCompleted,
-          storePickupInstructions: "Show this OTP at the store counter to collect the items",
-          
+          storePickupInstructions:
+            "Show this OTP at the store counter to collect the items",
+
           // Customer delivery OTP (for delivering to customer)
           customerDeliveryOtp: orderJson.otp,
           customerDeliveryOtpVerified: isCustomerDeliveryCompleted,
-          customerDeliveryInstructions: "Ask the customer for this OTP before handing over the items",
-          
+          customerDeliveryInstructions:
+            "Ask the customer for this OTP before handing over the items",
+
           // Current step information
           currentStep: currentStep,
           currentOtp: currentOtp,
           currentOtpVerified: currentOtpVerified,
-          nextAction: nextAction
+          nextAction: nextAction,
         },
-        
+
         // Store location (important for store pickup)
         storeLocation: storeLocation,
-        
+
         // Customer address
         address: address,
-        
+
         // Order items
         items: orderJson.OrderItems,
-        
+
         // Timeline
         timeline: {
           dispatchedAt: orderJson.dispatchedAt,
           outForDeliveryAt: orderJson.outForDeliveryAt,
-          deliveredAt: orderJson.deliveredAt
+          deliveredAt: orderJson.deliveredAt,
         },
-        
+
         // Available actions for the delivery boy
         actions: {
-          canPickupFromStore: order.status === "dispatched" && !isStorePickupCompleted,
-          canDeliverToCustomer: order.status === "out_for_delivery" && !isCustomerDeliveryCompleted,
-          canNavigateToStore: order.status === "dispatched" && !isStorePickupCompleted && !!storeLocation,
-          canNavigateToCustomer: !!(address?.latitude && address?.longitude)
-        }
+          canPickupFromStore:
+            order.status === "dispatched" && !isStorePickupCompleted,
+          canDeliverToCustomer:
+            order.status === "out_for_delivery" && !isCustomerDeliveryCompleted,
+          canNavigateToStore:
+            order.status === "dispatched" &&
+            !isStorePickupCompleted &&
+            !!storeLocation,
+          canNavigateToCustomer: !!(address?.latitude && address?.longitude),
+        },
       };
     });
 
     // Get summary statistics
     const summary = {
       totalAssigned: orders.length,
-      outForDelivery: orders.filter(o => o.status === "out_for_delivery").length,
-      dispatched: orders.filter(o => o.status === "dispatched").length,
-      todaysDeliveries: orders.filter(o => o.deliveryDate === new Date().toISOString().split('T')[0]).length,
-      pendingStorePickup: orders.filter(o => o.status === "dispatched" && o.deliveryPickupOtpVerified !== 1).length,
-      pendingCustomerDelivery: orders.filter(o => o.status === "out_for_delivery" && o.otpVerified !== 1).length
+      outForDelivery: orders.filter((o) => o.status === "out_for_delivery")
+        .length,
+      dispatched: orders.filter((o) => o.status === "dispatched").length,
+      todaysDeliveries: orders.filter(
+        (o) => o.deliveryDate === new Date().toISOString().split("T")[0],
+      ).length,
+      pendingStorePickup: orders.filter(
+        (o) => o.status === "dispatched" && o.deliveryPickupOtpVerified !== 1,
+      ).length,
+      pendingCustomerDelivery: orders.filter(
+        (o) => o.status === "out_for_delivery" && o.otpVerified !== 1,
+      ).length,
     };
 
     res.json({
       success: true,
       summary: summary,
-      data: formattedOrders
+      data: formattedOrders,
     });
   } catch (err) {
     console.error("Get my assigned orders error:", err);
     res.status(500).json({
       success: false,
-      message: err.message
+      message: err.message,
     });
   }
 };
-

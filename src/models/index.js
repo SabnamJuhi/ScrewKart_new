@@ -45,6 +45,8 @@ const ProductMeasurement = require("./products/ProductMeasurement.model");
 const MeasurementMaster = require("./measurements/MeasurementMaster.model");
 const VariantPricingSlab = require("./products/variantPricingSlab.model");
 const DeliverySlot = require("./delivery/deliverySlot.model");
+const Notification = require("./notificationStatus/notificationStatus.model")
+
 
 
 
@@ -270,5 +272,6 @@ module.exports = {
   ProductAttribute,
   ProductMeasurement,
   MeasurementMaster,
-  DeliverySlot
+  DeliverySlot,
+  Notification
 }
