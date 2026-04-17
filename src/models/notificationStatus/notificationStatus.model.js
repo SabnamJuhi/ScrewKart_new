@@ -30,6 +30,10 @@ const Notification = sequelize.define("Notification", {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  storeId: {
+  type: DataTypes.INTEGER,
+  allowNull: true,
+},
   isDeleted: {
   type: DataTypes.BOOLEAN,
   defaultValue: false,
