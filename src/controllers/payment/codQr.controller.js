@@ -4,10 +4,14 @@ const crypto = require("crypto");
 
 exports.generateCODQR = async (req, res) => {
   try {
-    const { orderId } = req.body;
-    console.log("Incoming orderId:", orderId);
+    // const { orderId } = req.body;
+    const { orderNumber } = req.body;
+console.log("Incoming orderNumber:", orderNumber);
+   console.log("Incoming orderNumber:", orderNumber);
 
-    const order = await Order.findByPk(orderId);
+    const order = await Order.findOne({
+  where: { orderNumber }
+});
     console.log("Order from DB:", order);
 
     if (!order) {

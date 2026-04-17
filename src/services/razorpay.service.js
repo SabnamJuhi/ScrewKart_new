@@ -50,9 +50,8 @@ exports.createDynamicQR = async ({ order }) => {
 
     description: `Payment for Order ${order.orderNumber}`,
 
-    notes: {
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-    },
+   notes: {
+  orderNumber: order.orderNumber,
+}
   });
 };
