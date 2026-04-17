@@ -50,7 +50,7 @@ exports.getDeliveryNotifications = async (req, res) => {
 
 exports.getAdminNotifications = async (req, res) => {
   try {
-    const { role, storeId } = req.user;
+    const { role, storeId } = req.admin;
 
     let condition = {
       isDeleted: false,
@@ -107,17 +107,123 @@ exports.markNotificationRead = async (req, res) => {
   }
 };
 
-exports.deleteNotification = async (req, res) => {
+exports.deleteUserNotification = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
 
-    await Notification.update(
+    const updated = await Notification.update(
       { isDeleted: true },
-      { where: { id } }
+      {
+        where: {
+          id,
+          userId: userId,
+          isDeleted: false,
+        },
+      }
     );
 
-    res.json({ success: true, message: "Notification deleted" });
+    if (!updated[0]) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found or not allowed",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "User notification deleted",
+    });
+
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+};
+
+
+exports.deleteDeliveryNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deliveryBoyId = req.deliveryBoy.id;
+
+    const updated = await Notification.update(
+      { isDeleted: true },
+      {
+        where: {
+          id,
+          deliveryBoyId: deliveryBoyId,
+          isDeleted: false,
+        },
+      }
+    );
+
+    if (!updated[0]) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found or not allowed",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Delivery notification deleted",
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+};
+
+exports.deleteAdminNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role, storeId } = req.admin;
+
+    let condition = {
+      id,
+      isDeleted: false,
+    };
+
+    if (role === "superAdmin") {
+      // 🔥 delete anything
+      condition = { id };
+    } 
+    else if (role === "storeAdmin") {
+      // 🔥 only their store
+      condition = {
+        id,
+        storeId: storeId,
+        isDeleted: false,
+      };
+    } 
+    else {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    const updated = await Notification.update(
+      { isDeleted: true },
+      { where: condition }
+    );
+
+    if (!updated[0]) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found or not allowed",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Admin notification deleted",
+    });
+
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false });
   }
 };
