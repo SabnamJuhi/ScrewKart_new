@@ -10,7 +10,7 @@ const Notification = sequelize.define("Notification", {
   },
   userId: {
   type: DataTypes.INTEGER,
-  allowNull: true, ✅
+  allowNull: true, 
 },
   deliveryBoyId: {
   type: DataTypes.INTEGER,
