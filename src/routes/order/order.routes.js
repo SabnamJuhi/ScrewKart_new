@@ -20,6 +20,9 @@ const { loginDeliveryBoy, getAllDeliveryBoys, registerDeliveryBoy, updateDeliver
 const { getAddressWithGoogleLink } = require("../../controllers/order/google.address.controller");
 const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
 const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
+const uploadDeliveryBoyDocsMiddleware = require("../../middleware/uploadDeliveryBoyDocs.middleware");
+
+
 
 
 
@@ -35,10 +38,10 @@ router.post("/verifyPayment", protected, orderController.verifyRazorpayPayment,)
 
 
 // --- Delivery Boy Auth ---
-router.post("/register", adminAuthMiddleware, registerDeliveryBoy);
+router.post("/register", adminAuthMiddleware, uploadDeliveryBoyDocsMiddleware, registerDeliveryBoy);
 router.post("/login", loginDeliveryBoy);
 router.get("/deliveryBoys", adminAuthMiddleware, getAllDeliveryBoys);
-router.patch("/deliveryBoys/:id", adminAuthMiddleware, updateDeliveryBoy);
+router.patch("/deliveryBoys/:id", adminAuthMiddleware, uploadDeliveryBoyDocsMiddleware, updateDeliveryBoy);
 router.delete("/deliveryBoys/:id",adminAuthMiddleware, deleteDeliveryBoy);
 
 

@@ -19,6 +19,7 @@ app.use(passport.initialize());
 
 
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 // app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api/admin", require("./routes/admin.auth.routes"))

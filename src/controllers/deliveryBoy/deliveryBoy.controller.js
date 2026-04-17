@@ -9,13 +9,69 @@ const {
   getPaginationOptions,
   formatPagination,
 } = require("../../utils/paginate");
+const uploadDeliveryBoyDocsMiddleware = require("../../middleware/uploadDeliveryBoyDocs.middleware");
+
 
 /**
  * REGISTER DELIVERY BOY (Admin or Self)
  */
+// exports.registerDeliveryBoy = async (req, res) => {
+//   try {
+//     const { name, email, mobile, password, confirmPassword, area } = req.body;
+
+//     if (!name || !email || !mobile || !password || !confirmPassword) {
+//       return res.status(400).json({ message: "All fields are required" });
+//     }
+
+//     if (password !== confirmPassword) {
+//       return res.status(400).json({ message: "Passwords do not match" });
+//     }
+
+//     const normalizedEmail = email.toLowerCase().trim();
+
+//     const existing = await DeliveryBoy.findOne({
+//       where: { email: normalizedEmail },
+//     });
+
+//     if (existing) {
+//       return res.status(409).json({ message: "Delivery boy already exists" });
+//     }
+
+//     // ❌ NO HASHING — store plain password
+//     const boy = await DeliveryBoy.create({
+//       name,
+//       email: normalizedEmail,
+//       mobile,
+//       password, // plain text
+//       area: area || null,
+//       status: "active",
+//     });
+
+//     res.status(201).json({
+//       success: true,
+//       deliveryBoy: {
+//         id: boy.id,
+//         name: boy.name,
+//         email: boy.email,
+//         mobile: boy.mobile,
+//         area: boy.area,
+//       },
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
 exports.registerDeliveryBoy = async (req, res) => {
   try {
-    const { name, email, mobile, password, confirmPassword, area } = req.body;
+    const {
+      name,
+      email,
+      mobile,
+      password,
+      confirmPassword,
+      area,
+    } = req.body;
 
     if (!name || !email || !mobile || !password || !confirmPassword) {
       return res.status(400).json({ message: "All fields are required" });
@@ -32,20 +88,35 @@ exports.registerDeliveryBoy = async (req, res) => {
     });
 
     if (existing) {
-      return res.status(409).json({ message: "Delivery boy already exists" });
+      return res.status(409).json({
+        message: "Delivery boy already exists",
+      });
     }
 
-    // ❌ NO HASHING — store plain password
+    const files = req.files || {};
+
+    // ✅ SINGLE CLEAN HELPER
+    const getFilePath = (folder, file) => {
+      return file
+        ? `/uploads/delivery_boys/${folder}/${file.filename}`
+        : null;
+    };
+
     const boy = await DeliveryBoy.create({
       name,
       email: normalizedEmail,
       mobile,
-      password, // plain text
+      password,
       area: area || null,
       status: "active",
+
+      panCard: getFilePath("pan", files.panCard?.[0]),
+      aadharCard: getFilePath("aadhar", files.aadharCard?.[0]),
+      drivingLicense: getFilePath("license", files.drivingLicense?.[0]),
+      profilePhoto: getFilePath("profile", files.profilePhoto?.[0]),
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       deliveryBoy: {
         id: boy.id,
@@ -56,7 +127,10 @@ exports.registerDeliveryBoy = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
@@ -129,13 +203,183 @@ exports.getAllDeliveryBoys = async (req, res) => {
   }
 };
 
+// exports.updateDeliveryBoy = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { name, email, mobile, password, area, status } = req.body;
+
+//     // 🔍 Find delivery boy
+//     const boy = await DeliveryBoy.findByPk(id);
+//     if (!boy) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Delivery boy not found",
+//       });
+//     }
+
+//     // 📧 Normalize email if provided
+//     let normalizedEmail = boy.email;
+//     if (email) {
+//       normalizedEmail = email.toLowerCase().trim();
+
+//       const emailExists = await DeliveryBoy.findOne({
+//         where: { email: normalizedEmail },
+//       });
+
+//       if (emailExists && emailExists.id !== boy.id) {
+//         return res.status(409).json({
+//           success: false,
+//           message: "Email already in use",
+//         });
+//       }
+//     }
+
+//     // 📱 Check mobile uniqueness if provided
+//     if (mobile) {
+//       const mobileExists = await DeliveryBoy.findOne({
+//         where: { mobile },
+//       });
+
+//       if (mobileExists && mobileExists.id !== boy.id) {
+//         return res.status(409).json({
+//           success: false,
+//           message: "Mobile number already in use",
+//         });
+//       }
+//     }
+
+//     // ✏️ Update fields (partial update allowed)
+//     await boy.update({
+//       name: name ?? boy.name,
+//       email: normalizedEmail,
+//       mobile: mobile ?? boy.mobile,
+//       password: password ?? boy.password, // plain text as per your requirement
+//       area: area ?? boy.area,
+//       status: status ?? boy.status,
+//     });
+
+//     // 🚫 Hide password from response
+//     const updated = boy.toJSON();
+//     delete updated.password;
+
+//     res.json({
+//       success: true,
+//       message: "Delivery boy updated successfully",
+//       data: updated,
+//     });
+//   } catch (err) {
+//     console.error("Update DeliveryBoy Error:", err);
+
+//     res.status(500).json({
+//       success: false,
+//       message: err.message,
+//       error: err.errors || null, // shows Sequelize validation reason
+//     });
+//   }
+// };
+
+
+// exports.updateDeliveryBoy = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const {
+//       name,
+//       email,
+//       mobile,
+//       password,
+//       area,
+//       status,
+//     } = req.body;
+
+//     const boy = await DeliveryBoy.findByPk(id);
+
+//     if (!boy) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Delivery boy not found",
+//       });
+//     }
+
+//     const files = req.files || {};
+
+//     let normalizedEmail = boy.email;
+
+//     if (email) {
+//       normalizedEmail = email.toLowerCase().trim();
+
+//       const emailExists = await DeliveryBoy.findOne({
+//         where: { email: normalizedEmail },
+//       });
+
+//       if (emailExists && emailExists.id !== boy.id) {
+//         return res.status(409).json({
+//           success: false,
+//           message: "Email already in use",
+//         });
+//       }
+//     }
+
+//     if (mobile) {
+//       const mobileExists = await DeliveryBoy.findOne({
+//         where: { mobile },
+//       });
+
+//       if (mobileExists && mobileExists.id !== boy.id) {
+//         return res.status(409).json({
+//           success: false,
+//           message: "Mobile already in use",
+//         });
+//       }
+//     }
+
+//     await boy.update({
+//       name: name ?? boy.name,
+//       email: normalizedEmail,
+//       mobile: mobile ?? boy.mobile,
+//       password: password ?? boy.password,
+//       area: area ?? boy.area,
+//       status: status ?? boy.status,
+
+//       // 📄 Update documents only if new file uploaded
+//       panCard: files.panCard?.[0]?.path || boy.panCard,
+//       aadharCard: files.aadharCard?.[0]?.path || boy.aadharCard,
+//       drivingLicense:
+//         files.drivingLicense?.[0]?.path || boy.drivingLicense,
+//       profilePhoto:
+//         files.profilePhoto?.[0]?.path || boy.profilePhoto,
+//     });
+
+//     const updated = boy.toJSON();
+//     delete updated.password;
+
+//     return res.json({
+//       success: true,
+//       message: "Delivery boy updated successfully",
+//       data: updated,
+//     });
+//   } catch (err) {
+//     return res.status(500).json({
+//       success: false,
+//       message: err.message,
+//     });
+//   }
+// };
+
+
 exports.updateDeliveryBoy = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, mobile, password, area, status } = req.body;
+    const {
+      name,
+      email,
+      mobile,
+      password,
+      area,
+      status,
+    } = req.body;
 
-    // 🔍 Find delivery boy
     const boy = await DeliveryBoy.findByPk(id);
+
     if (!boy) {
       return res.status(404).json({
         success: false,
@@ -143,8 +387,17 @@ exports.updateDeliveryBoy = async (req, res) => {
       });
     }
 
-    // 📧 Normalize email if provided
+    const files = req.files || {};
+
+    // ✅ CLEAN FILE PATH HELPER
+    const getFilePath = (folder, file, existing) => {
+      return file
+        ? `/uploads/delivery_boys/${folder}/${file.filename}`
+        : existing;
+    };
+
     let normalizedEmail = boy.email;
+
     if (email) {
       normalizedEmail = email.toLowerCase().trim();
 
@@ -160,7 +413,6 @@ exports.updateDeliveryBoy = async (req, res) => {
       }
     }
 
-    // 📱 Check mobile uniqueness if provided
     if (mobile) {
       const mobileExists = await DeliveryBoy.findOne({
         where: { mobile },
@@ -169,37 +421,46 @@ exports.updateDeliveryBoy = async (req, res) => {
       if (mobileExists && mobileExists.id !== boy.id) {
         return res.status(409).json({
           success: false,
-          message: "Mobile number already in use",
+          message: "Mobile already in use",
         });
       }
     }
 
-    // ✏️ Update fields (partial update allowed)
     await boy.update({
       name: name ?? boy.name,
       email: normalizedEmail,
       mobile: mobile ?? boy.mobile,
-      password: password ?? boy.password, // plain text as per your requirement
+      password: password ?? boy.password,
       area: area ?? boy.area,
       status: status ?? boy.status,
+
+      // 📄 Documents (FIXED)
+      panCard: getFilePath("pan", files.panCard?.[0], boy.panCard),
+      aadharCard: getFilePath("aadhar", files.aadharCard?.[0], boy.aadharCard),
+      drivingLicense: getFilePath(
+        "license",
+        files.drivingLicense?.[0],
+        boy.drivingLicense
+      ),
+      profilePhoto: getFilePath(
+        "profile",
+        files.profilePhoto?.[0],
+        boy.profilePhoto
+      ),
     });
 
-    // 🚫 Hide password from response
     const updated = boy.toJSON();
     delete updated.password;
 
-    res.json({
+    return res.json({
       success: true,
       message: "Delivery boy updated successfully",
       data: updated,
     });
   } catch (err) {
-    console.error("Update DeliveryBoy Error:", err);
-
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
-      error: err.errors || null, // shows Sequelize validation reason
     });
   }
 };

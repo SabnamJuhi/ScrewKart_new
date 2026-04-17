@@ -1,7 +1,3 @@
-
-
-
-
 const { DataTypes } = require("sequelize");
 const sequelize = require("../../config/db");
 
@@ -34,6 +30,22 @@ const DeliveryBoy = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    panCard: {
+      type: DataTypes.STRING, // file path
+      allowNull: true,
+    },
+    aadharCard: {
+      type: DataTypes.STRING, // file path
+      allowNull: true,
+    },
+    drivingLicense: {
+      type: DataTypes.STRING, // file path
+      allowNull: true,
+    },
+    profilePhoto: {
+      type: DataTypes.STRING, // file path
+      allowNull: true,
+    },
     status: {
       type: DataTypes.ENUM("active", "inactive"),
       defaultValue: "active",
@@ -42,7 +54,7 @@ const DeliveryBoy = sequelize.define(
   {
     tableName: "delivery_boys",
     timestamps: true,
-  }
+  },
 );
 
 module.exports = DeliveryBoy;
