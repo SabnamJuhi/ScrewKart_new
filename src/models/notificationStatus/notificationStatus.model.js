@@ -9,9 +9,9 @@ const Notification = sequelize.define("Notification", {
     primaryKey: true,
   },
   userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
+  type: DataTypes.INTEGER,
+  allowNull: true, ✅
+},
   deliveryBoyId: {
   type: DataTypes.INTEGER,
   allowNull: true,

@@ -1240,6 +1240,21 @@ exports.verifyRazorpayPayment = async (req, res) => {
 };
 
 exports.razorpayWebhook = async (req, res) => {
+  const crypto = require("crypto");
+
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(req.body)
+    .digest("hex");
+
+  const receivedSignature = req.headers["x-razorpay-signature"];
+
+  if (expectedSignature !== receivedSignature) {
+    return res.status(400).json({ error: "Invalid signature" });
+  }
+
   const event = JSON.parse(req.body.toString());
 
   try {
