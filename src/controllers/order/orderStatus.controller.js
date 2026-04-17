@@ -538,6 +538,247 @@ exports.getOrderTimeline = async (req, res) => {
   }
 };
 
+// /**
+//  * DELIVERY BOY: Get my assigned orders
+//  */
+// exports.getMyAssignedOrders = async (req, res) => {
+//   try {
+//     // Get delivery boy ID from authenticated user
+//     const deliveryBoyId = req.deliveryBoy?.id;
+
+//     if (!deliveryBoyId) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized - Delivery boy not authenticated",
+//       });
+//     }
+
+//     console.log(`Fetching orders for delivery boy: ${deliveryBoyId}`);
+
+//     // Fetch orders assigned to this delivery boy
+//     const orders = await Order.findAll({
+//       where: {
+//         deliveryBoyId: deliveryBoyId,
+//         status: ["dispatched", "out_for_delivery"], // Only show active deliveries
+//       },
+//       include: [
+//         {
+//           model: OrderAddress,
+//           as: "address",
+//           attributes: [
+//             "fullName",
+//             "phoneNumber",
+//             "addressLine",
+//             "city",
+//             "state",
+//             "zipCode",
+//             "country",
+//             "latitude",
+//             "longitude",
+//             "placeId",
+//             "formattedAddress",
+//           ],
+//         },
+//         {
+//           model: OrderItem,
+//           as: "OrderItems",
+//           attributes: ["productName", "quantity", "totalPrice"],
+//         },
+//         {
+//           model: Store,
+//           as: "store",
+//           attributes: [
+//             "id",
+//             "name",
+//             "latitude",
+//             "longitude",
+//             "deliveryRadius",
+//             "isActive",
+//             "openTime",
+//             "closeTime",
+//             "avgDeliveryTime",
+//             // ❌ NO 'address' field here because it doesn't exist in the model
+//           ],
+//         },
+//       ],
+//       order: [
+//         ["deliveryDate", "ASC"],
+//         ["deliverySlotId", "ASC"],
+//       ],
+//     });
+
+//     // Format orders with navigation links and BOTH OTPs
+//     const formattedOrders = orders.map((order) => {
+//       const orderJson = order.toJSON();
+//       const address = orderJson.address;
+//       const store = orderJson.store;
+
+//       // Generate customer address navigation links
+//       if (address) {
+//         if (address.latitude && address.longitude) {
+//           address.navigationLinks = {
+//             googleMaps: `https://www.google.com/maps?q=${address.latitude},${address.longitude}`,
+//             directions: `https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`,
+//             waze: `https://waze.com/ul?ll=${address.latitude},${address.longitude}&navigate=yes`,
+//           };
+//         } else if (address.formattedAddress) {
+//           const encodedAddress = encodeURIComponent(address.formattedAddress);
+//           address.navigationLinks = {
+//             googleMaps: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
+//             directions: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
+//           };
+//         }
+//       }
+
+//       // Generate store location navigation links (for dispatched orders)
+//       let storeLocation = null;
+//       if (
+//         order.status === "dispatched" &&
+//         store &&
+//         store.latitude &&
+//         store.longitude
+//       ) {
+//         storeLocation = {
+//           id: store.id,
+//           name: store.name,
+//           // No address field, use coordinates and name
+//           location: `${store.name} (${store.latitude}, ${store.longitude})`,
+//           deliveryRadius: store.deliveryRadius,
+//           avgDeliveryTime: store.avgDeliveryTime,
+//           isActive: store.isActive,
+//           timing:
+//             store.openTime && store.closeTime
+//               ? `${store.openTime} - ${store.closeTime}`
+//               : null,
+//           coordinates: {
+//             lat: store.latitude,
+//             lng: store.longitude,
+//           },
+//           navigationLinks: {
+//             googleMaps: `https://www.google.com/maps?q=${store.latitude},${store.longitude}`,
+//             directions: `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`,
+//             waze: `https://waze.com/ul?ll=${store.latitude},${store.longitude}&navigate=yes`,
+//           },
+//         };
+//       }
+
+//       // Determine which OTP is currently active
+//       const isStorePickupCompleted = order.deliveryPickupOtpVerified === 1;
+//       const isCustomerDeliveryCompleted = order.otpVerified === 1;
+
+//       let currentStep = "";
+//       let currentOtp = "";
+//       let currentOtpVerified = false;
+//       let nextAction = "";
+
+//       if (order.status === "dispatched") {
+//         currentStep = "STORE_PICKUP";
+//         currentOtp = order.deliveryPickupOtp;
+//         currentOtpVerified = isStorePickupCompleted;
+//         nextAction = isStorePickupCompleted
+//           ? "Proceed to customer delivery"
+//           : "Visit store and provide this OTP to collect items";
+//       } else if (order.status === "out_for_delivery") {
+//         currentStep = "CUSTOMER_DELIVERY";
+//         currentOtp = order.otp;
+//         currentOtpVerified = isCustomerDeliveryCompleted;
+//         nextAction = isCustomerDeliveryCompleted
+//           ? "Delivery completed"
+//           : "Reach customer location and verify OTP to complete delivery";
+//       }
+
+//       return {
+//         orderNumber: orderJson.orderNumber,
+//         status: orderJson.status,
+//         deliveryDate: orderJson.deliveryDate,
+//         deliverySlot: orderJson.deliverySlotId,
+//         totalAmount: orderJson.totalAmount,
+//         paymentMethod: orderJson.paymentMethod,
+
+//         // ✅ BOTH OTPs included here
+//         otpInfo: {
+//           // Store pickup OTP (for collecting items from store)
+//           storePickupOtp: orderJson.deliveryPickupOtp,
+//           storePickupOtpVerified: isStorePickupCompleted,
+//           storePickupInstructions:
+//             "Show this OTP at the store counter to collect the items",
+
+//           // Customer delivery OTP (for delivering to customer)
+//           customerDeliveryOtp: orderJson.otp,
+//           customerDeliveryOtpVerified: isCustomerDeliveryCompleted,
+//           customerDeliveryInstructions:
+//             "Ask the customer for this OTP before handing over the items",
+
+//           // Current step information
+//           currentStep: currentStep,
+//           currentOtp: currentOtp,
+//           currentOtpVerified: currentOtpVerified,
+//           nextAction: nextAction,
+//         },
+
+//         // Store location (important for store pickup)
+//         storeLocation: storeLocation,
+
+//         // Customer address
+//         address: address,
+
+//         // Order items
+//         items: orderJson.OrderItems,
+
+//         // Timeline
+//         timeline: {
+//           dispatchedAt: orderJson.dispatchedAt,
+//           outForDeliveryAt: orderJson.outForDeliveryAt,
+//           deliveredAt: orderJson.deliveredAt,
+//         },
+
+//         // Available actions for the delivery boy
+//         actions: {
+//           canPickupFromStore:
+//             order.status === "dispatched" && !isStorePickupCompleted,
+//           canDeliverToCustomer:
+//             order.status === "out_for_delivery" && !isCustomerDeliveryCompleted,
+//           canNavigateToStore:
+//             order.status === "dispatched" &&
+//             !isStorePickupCompleted &&
+//             !!storeLocation,
+//           canNavigateToCustomer: !!(address?.latitude && address?.longitude),
+//         },
+//       };
+//     });
+
+//     // Get summary statistics
+//     const summary = {
+//       totalAssigned: orders.length,
+//       outForDelivery: orders.filter((o) => o.status === "out_for_delivery")
+//         .length,
+//       dispatched: orders.filter((o) => o.status === "dispatched").length,
+//       todaysDeliveries: orders.filter(
+//         (o) => o.deliveryDate === new Date().toISOString().split("T")[0],
+//       ).length,
+//       pendingStorePickup: orders.filter(
+//         (o) => o.status === "dispatched" && o.deliveryPickupOtpVerified !== 1,
+//       ).length,
+//       pendingCustomerDelivery: orders.filter(
+//         (o) => o.status === "out_for_delivery" && o.otpVerified !== 1,
+//       ).length,
+//     };
+
+//     res.json({
+//       success: true,
+//       summary: summary,
+//       data: formattedOrders,
+//     });
+//   } catch (err) {
+//     console.error("Get my assigned orders error:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: err.message,
+//     });
+//   }
+// };
+
+
 /**
  * DELIVERY BOY: Get my assigned orders
  */
@@ -555,11 +796,11 @@ exports.getMyAssignedOrders = async (req, res) => {
 
     console.log(`Fetching orders for delivery boy: ${deliveryBoyId}`);
 
-    // Fetch orders assigned to this delivery boy
+    // ✅ CHANGED: include delivered orders also
     const orders = await Order.findAll({
       where: {
         deliveryBoyId: deliveryBoyId,
-        status: ["dispatched", "out_for_delivery"], // Only show active deliveries
+        status: ["dispatched", "out_for_delivery", "delivered"], // ✅ added delivered
       },
       include: [
         {
@@ -597,7 +838,6 @@ exports.getMyAssignedOrders = async (req, res) => {
             "openTime",
             "closeTime",
             "avgDeliveryTime",
-            // ❌ NO 'address' field here because it doesn't exist in the model
           ],
         },
       ],
@@ -607,13 +847,12 @@ exports.getMyAssignedOrders = async (req, res) => {
       ],
     });
 
-    // Format orders with navigation links and BOTH OTPs
+    // Format orders (UNCHANGED)
     const formattedOrders = orders.map((order) => {
       const orderJson = order.toJSON();
       const address = orderJson.address;
       const store = orderJson.store;
 
-      // Generate customer address navigation links
       if (address) {
         if (address.latitude && address.longitude) {
           address.navigationLinks = {
@@ -630,7 +869,6 @@ exports.getMyAssignedOrders = async (req, res) => {
         }
       }
 
-      // Generate store location navigation links (for dispatched orders)
       let storeLocation = null;
       if (
         order.status === "dispatched" &&
@@ -641,7 +879,6 @@ exports.getMyAssignedOrders = async (req, res) => {
         storeLocation = {
           id: store.id,
           name: store.name,
-          // No address field, use coordinates and name
           location: `${store.name} (${store.latitude}, ${store.longitude})`,
           deliveryRadius: store.deliveryRadius,
           avgDeliveryTime: store.avgDeliveryTime,
@@ -662,7 +899,6 @@ exports.getMyAssignedOrders = async (req, res) => {
         };
       }
 
-      // Determine which OTP is currently active
       const isStorePickupCompleted = order.deliveryPickupOtpVerified === 1;
       const isCustomerDeliveryCompleted = order.otpVerified === 1;
 
@@ -685,6 +921,11 @@ exports.getMyAssignedOrders = async (req, res) => {
         nextAction = isCustomerDeliveryCompleted
           ? "Delivery completed"
           : "Reach customer location and verify OTP to complete delivery";
+      } else if (order.status === "delivered") {
+        currentStep = "COMPLETED";
+        currentOtp = null;
+        currentOtpVerified = true;
+        nextAction = "Order delivered successfully";
       }
 
       return {
@@ -695,44 +936,29 @@ exports.getMyAssignedOrders = async (req, res) => {
         totalAmount: orderJson.totalAmount,
         paymentMethod: orderJson.paymentMethod,
 
-        // ✅ BOTH OTPs included here
         otpInfo: {
-          // Store pickup OTP (for collecting items from store)
           storePickupOtp: orderJson.deliveryPickupOtp,
           storePickupOtpVerified: isStorePickupCompleted,
-          storePickupInstructions:
-            "Show this OTP at the store counter to collect the items",
 
-          // Customer delivery OTP (for delivering to customer)
           customerDeliveryOtp: orderJson.otp,
           customerDeliveryOtpVerified: isCustomerDeliveryCompleted,
-          customerDeliveryInstructions:
-            "Ask the customer for this OTP before handing over the items",
 
-          // Current step information
-          currentStep: currentStep,
-          currentOtp: currentOtp,
-          currentOtpVerified: currentOtpVerified,
-          nextAction: nextAction,
+          currentStep,
+          currentOtp,
+          currentOtpVerified,
+          nextAction,
         },
 
-        // Store location (important for store pickup)
-        storeLocation: storeLocation,
-
-        // Customer address
-        address: address,
-
-        // Order items
+        storeLocation,
+        address,
         items: orderJson.OrderItems,
 
-        // Timeline
         timeline: {
           dispatchedAt: orderJson.dispatchedAt,
           outForDeliveryAt: orderJson.outForDeliveryAt,
           deliveredAt: orderJson.deliveredAt,
         },
 
-        // Available actions for the delivery boy
         actions: {
           canPickupFromStore:
             order.status === "dispatched" && !isStorePickupCompleted,
@@ -747,27 +973,47 @@ exports.getMyAssignedOrders = async (req, res) => {
       };
     });
 
-    // Get summary statistics
+    // ✅ NEW: split orders
+    const completedOrders = formattedOrders.filter(
+      (o) => o.status === "delivered"
+    );
+
+    const remainingOrders = formattedOrders.filter(
+      (o) =>
+        o.status === "dispatched" || o.status === "out_for_delivery"
+    );
+
+    // Summary (slightly enhanced)
     const summary = {
       totalAssigned: orders.length,
+      completedOrders: completedOrders.length,
+      remainingOrders: remainingOrders.length,
+
       outForDelivery: orders.filter((o) => o.status === "out_for_delivery")
         .length,
       dispatched: orders.filter((o) => o.status === "dispatched").length,
+
       todaysDeliveries: orders.filter(
-        (o) => o.deliveryDate === new Date().toISOString().split("T")[0],
+        (o) => o.deliveryDate === new Date().toISOString().split("T")[0]
       ).length,
+
       pendingStorePickup: orders.filter(
-        (o) => o.status === "dispatched" && o.deliveryPickupOtpVerified !== 1,
+        (o) => o.status === "dispatched" && o.deliveryPickupOtpVerified !== 1
       ).length,
+
       pendingCustomerDelivery: orders.filter(
-        (o) => o.status === "out_for_delivery" && o.otpVerified !== 1,
+        (o) => o.status === "out_for_delivery" && o.otpVerified !== 1
       ).length,
     };
 
+    // ✅ CHANGED RESPONSE ONLY
     res.json({
       success: true,
-      summary: summary,
-      data: formattedOrders,
+      summary,
+      data: {
+        remainingOrders,
+        completedOrders,
+      },
     });
   } catch (err) {
     console.error("Get my assigned orders error:", err);
