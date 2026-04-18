@@ -6,6 +6,7 @@ const {
   getFeaturedCategories,
   updateFeaturedCategory,
   removeFeaturedCategory,
+  reorderFeaturedCategories,
 } = require("../../controllers/featureCategories/featureCategory.controller");
 const adminAuthMiddleware = require("../../middleware/admin.auth.middleware");
 
@@ -16,10 +17,13 @@ router.post("/", adminAuthMiddleware, addFeaturedCategories);
 // Get All Featured Categories
 router.get("/", getFeaturedCategories);
 
+router.put("/reorder", reorderFeaturedCategories)
+
 // Update Featured Category
 router.patch("/:id",adminAuthMiddleware,  updateFeaturedCategory);
 
 // Delete Featured Category
 router.delete("/:id", adminAuthMiddleware, removeFeaturedCategory);
+
 
 module.exports = router;

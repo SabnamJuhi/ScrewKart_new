@@ -194,3 +194,50 @@ exports.updateFeaturedCategory = async (req, res) => {
     });
   }
 };
+
+
+
+exports.reorderFeaturedCategories = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || !items.length) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Items array is required",
+      });
+    }
+
+    // 🔥 update all in parallel
+    await Promise.all(
+      items.map((item) =>
+        FeaturedCategory.update(
+          { sortOrder: item.sortOrder },
+          {
+            where: { id: item.id },
+            transaction,
+          }
+        )
+      )
+    );
+
+    await transaction.commit();
+
+    return res.json({
+      success: true,
+      message: "Order updated successfully",
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Reorder Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
