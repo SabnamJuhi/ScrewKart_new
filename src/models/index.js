@@ -39,9 +39,9 @@ const FeaturedCategory = require("./featuredCategories/featured_categories.model
 const FAQ = require("./faq/faq.model");
 //Store
 const Store = require("./store/store.model");
-const StoreInventory = require("./products/StoreInventory.model");
-const ProductAttribute = require("./products/ProductAttribute.model");
-const ProductMeasurement = require("./products/ProductMeasurement.model");
+const StoreInventory = require("./products/storeInventory.model");
+const ProductAttribute = require("./products/productAttribute.model");
+const ProductMeasurement = require("./products/productMeasurement.model");
 const MeasurementMaster = require("./measurements/MeasurementMaster.model");
 const VariantPricingSlab = require("./products/variantPricingSlab.model");
 const DeliverySlot = require("./delivery/deliverySlot.model");
