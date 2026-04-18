@@ -26,9 +26,36 @@ exports.createProductCategory = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// GET ALL PRODUCT CATEGORIES WITH PRODUCT COUNTS
 exports.getAllProductCategories = async (req, res) => {
   try {
-    const data = await ProductCategory.findAll();
+    const data = await ProductCategory.findAll({
+      attributes: [
+        "id",
+        "name",
+        "categoryId",
+        "subCategoryId",
+        "isActive",
+        "createdAt",
+        "updatedAt",
+        [
+          sequelize.fn("COUNT", sequelize.col("Products.id")),
+          "productCount",
+        ],
+      ],
+      include: [
+        {
+          model: Product,
+          as: "Products",
+          attributes: [],
+          required: false,
+          where: { isActive: true }, // Count only active products
+        },
+      ],
+      group: ["ProductCategory.id"],
+      order: [[sequelize.literal("productCount"), "DESC"]],
+    });
 
     res.json({
       success: true,
@@ -38,6 +65,7 @@ exports.getAllProductCategories = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 exports.getBySubCategory = async (req, res) => {
   try {
     const { subCategoryId } = req.params;
@@ -54,6 +82,7 @@ exports.getBySubCategory = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 exports.getByCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;

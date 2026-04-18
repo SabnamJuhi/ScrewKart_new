@@ -233,13 +233,151 @@ exports.deleteCategory = async (req, res) => {
 };
 
 
+// exports.getAllNestedCategories = async (req, res) => {
+//   try {
+//     // ============================================
+//     // 1️⃣ CATEGORY TREE WITH PRODUCT COUNT
+//     // ============================================
+//     const categories = await Category.findAll({
+//       attributes: ["id", "name", "isActive"],
+//       where: { isActive: true },
+
+//       include: [
+//         {
+//           model: SubCategory,
+//           as: "subcategories",
+//           attributes: ["id", "name", "isActive"],
+//           where: { isActive: true },
+//           required: false,
+
+//           include: [
+//             {
+//               model: ProductCategory,
+//               as: "productCategories",
+//               attributes: [
+//                 "id",
+//                 "name",
+//                 "isActive",
+//                 [
+//                   sequelize.fn(
+//                     "COUNT",
+//                     sequelize.col(
+//                       "subcategories->productCategories->Products.id"
+//                     )
+//                   ),
+//                   "productCount",
+//                 ],
+//               ],
+//               where: { isActive: true },
+//               required: false,
+
+//               include: [
+//                 {
+//                   model: Product,
+//                   as: "Products",
+//                   attributes: [],
+//                   where: { isActive: true },
+//                   required: false,
+//                 },
+//               ],
+//             },
+//           ],
+//         },
+//       ],
+
+//       group: [
+//         "Category.id",
+//         "subcategories.id",
+//         "subcategories->productCategories.id",
+//       ],
+
+//       order: [["id", "ASC"]],
+//       subQuery: false,
+//     });
+
+//     // ============================================
+//     // 2️⃣ FIRST IMAGE PER PRODUCT CATEGORY (RAW SQL)
+//     // ============================================
+//     const firstImages = await sequelize.query(
+//       `
+//       SELECT 
+//         p.productCategoryId,
+//         MIN(vi.imageUrl) AS imageUrl
+//       FROM products p
+//       JOIN product_variants pv ON pv.productId = p.id
+//       JOIN variant_images vi ON vi.variantId = pv.id
+//       WHERE p.isActive = true
+//       GROUP BY p.productCategoryId
+//       `,
+//       { type: sequelize.QueryTypes.SELECT }
+//     );
+
+//     // Map images by productCategoryId
+//     const imageMap = {};
+//     firstImages.forEach((row) => {
+//       imageMap[row.productCategoryId] = row.imageUrl;
+//     });
+
+//     // ============================================
+//     // 3️⃣ FORMAT FINAL RESPONSE
+//     // ============================================
+//     const formatted = categories.map((cat) => ({
+//       id: cat.id,
+//       name: cat.name,
+//       isActive: cat.isActive,
+
+//       subcategories:
+//         cat.subcategories?.map((sub) => ({
+//           id: sub.id,
+//           name: sub.name,
+//           isActive: sub.isActive,
+
+//           productCategories:
+//             sub.productCategories?.map((pc) => ({
+//               id: pc.id,
+//               name: pc.name,
+//               isActive: pc.isActive,
+//               productCount: Number(pc.get("productCount")) || 0,
+//               image: imageMap[pc.id] || null,
+//             })) || [],
+//         })) || [],
+//     }));
+
+//     // ============================================
+//     // 4️⃣ RESPONSE
+//     // ============================================
+//     return res.json({
+//       success: true,
+//       data: formatted,
+//     });
+//   } catch (error) {
+//     console.error("GetAllNestedCategories Error:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch categories",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
 exports.getAllNestedCategories = async (req, res) => {
   try {
     // ============================================
-    // 1️⃣ CATEGORY TREE WITH PRODUCT COUNT
+    // 1️⃣ CATEGORY TREE WITH PRODUCT COUNTS
     // ============================================
     const categories = await Category.findAll({
-      attributes: ["id", "name", "isActive"],
+      attributes: [
+        "id", 
+        "name", 
+        "isActive",
+        [
+          sequelize.fn("COUNT", sequelize.col("Products.id")),
+          "totalProductCount",
+        ],
+      ],
       where: { isActive: true },
 
       include: [
@@ -283,6 +421,13 @@ exports.getAllNestedCategories = async (req, res) => {
             },
           ],
         },
+        {
+          model: Product,
+          as: "Products",
+          attributes: [],
+          where: { isActive: true },
+          required: false,
+        },
       ],
 
       group: [
@@ -325,6 +470,7 @@ exports.getAllNestedCategories = async (req, res) => {
       id: cat.id,
       name: cat.name,
       isActive: cat.isActive,
+      totalProductCount: Number(cat.get("totalProductCount")) || 0,
 
       subcategories:
         cat.subcategories?.map((sub) => ({
@@ -360,6 +506,8 @@ exports.getAllNestedCategories = async (req, res) => {
     });
   }
 };
+
+
 
 
 // GET CATEGORIES WITH PRODUCT COUNTS (Public)
