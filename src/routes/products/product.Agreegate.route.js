@@ -19,6 +19,8 @@ const { allowAdminRoles } = require("../../middleware/admin.role.middleware");
 const { getAllProductsDetailsAdmin, getProductDetailsByIdAdmin } = require("../../controllers/AggregateProducts/adminSide/product.admin.controller");
 const { calculateProductPrice } = require("../../controllers/AggregateProducts/calculateProductPrice.controller");
 const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
+const { getTopSellingProducts } = require("../../controllers/AggregateProducts/topSellingProducts.controller");
+const { getTopSellingCategories } = require("../../controllers/AggregateProducts/topSellingCategories.controller");
 
 
 // router.post("/products", upload.any(), productController.createProduct)
@@ -50,6 +52,10 @@ router.get('/admin/products', adminAuth,  allowAdminRoles("superAdmin", "storeAd
 router.get('/admin/products/:id', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), getProductDetailsByIdAdmin)
 
 router.post('/calculate-price', calculateProductPrice)
+
+router.get('/topSelling/product', getTopSellingProducts)
+router.get('/topSelling/categories', getTopSellingCategories)
+
 
 
 module.exports = router

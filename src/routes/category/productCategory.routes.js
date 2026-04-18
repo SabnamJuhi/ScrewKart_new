@@ -9,12 +9,11 @@ const {
   getBySubCategory,
   updateProductCategory,
   deleteProductCategory,
-  getAllProductCategoriesWithCounts
 } = require("../../controllers/category/productCategory.controller")
 
 router.post("/", adminAuth, createProductCategory)
 router.get("/", getAllProductCategories)
-router.get("/products", getAllProductCategoriesWithCounts)
+// router.get("/products", getAllProductCategoriesWithCounts)
 router.get("/category/:categoryId", getByCategory)
 router.get("/subcategory/:subCategoryId", getBySubCategory)
 router.put("/:id", adminAuth, updateProductCategory)
