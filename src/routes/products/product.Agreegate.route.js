@@ -21,6 +21,7 @@ const { calculateProductPrice } = require("../../controllers/AggregateProducts/c
 const { checkStoreAccess } = require("../../middleware/storeAccess.middleware");
 const { getTopSellingProducts } = require("../../controllers/AggregateProducts/topSellingProducts.controller");
 const { getTopSellingCategories } = require("../../controllers/AggregateProducts/topSellingCategories.controller");
+const { getRelatedProductsAdvanced } = require("../../controllers/AggregateProducts/reletedProducts.controller");
 
 
 // router.post("/products", upload.any(), productController.createProduct)
@@ -47,14 +48,18 @@ router.delete('/:id', adminAuth,  allowAdminRoles("superAdmin"), softDeleteProdu
 router.delete('/delete/:id', adminAuth,  allowAdminRoles("superAdmin"), deleteProductPermanently)
 
 
-//ADMIN SIDE
-router.get('/admin/products', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"),  getAllProductsDetailsAdmin)
-router.get('/admin/products/:id', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), getProductDetailsByIdAdmin)
 
 router.post('/calculate-price', calculateProductPrice)
 
 router.get('/topSelling/product', getTopSellingProducts)
 router.get('/topSelling/categories', getTopSellingCategories)
+
+//ADMIN SIDE
+router.get('/admin/products', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"),  getAllProductsDetailsAdmin)
+router.get('/admin/products/:id', adminAuth,  allowAdminRoles("superAdmin", "storeAdmin"), getProductDetailsByIdAdmin)
+
+
+router.get("/:id/related/advanced", getRelatedProductsAdvanced);
 
 
 
