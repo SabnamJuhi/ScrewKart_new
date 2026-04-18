@@ -10,6 +10,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://screwkart.in",
+      "https://screwcart-d1.netlify.app"
     ],
     credentials: true,
   })

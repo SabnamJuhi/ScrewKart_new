@@ -6,7 +6,7 @@ const controller = require("../../controllers/category/category.controller")
 // Category routes
 router.post("/", adminAuth, controller.createCategory)
 router.get("/nested", controller.getAllNestedCategories)
-// router.get("/", controller.getAllCategories)
+router.get("/", controller.getCategoriesWithProductCount)
 router.get("/:id", controller.getCategoryById)
 router.put("/:id", adminAuth, controller.updateCategory)
 router.delete("/:id", adminAuth, controller.deleteCategory)

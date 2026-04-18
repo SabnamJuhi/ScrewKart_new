@@ -62,49 +62,6 @@ exports.getSubCategoriesByCategory = async (req, res) => {
   }
 }
 
-// exports.updateSubCategory = async (req, res) => {
-//   try {
-//     const { id } = req.params
-//     const { name } = req.body
-
-//     const subCategory = await SubCategory.findByPk(id)
-//     if (!subCategory) {
-//       return res.status(404).json({ message: "Subcategory not found" })
-//     }
-
-//     subCategory.name = name || subCategory.name
-//     await subCategory.save()
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Subcategory updated",
-//       data: subCategory
-//     })
-//   } catch (error) {
-//     res.status(500).json({ message: error.message })
-//   }
-// }
-
-// exports.deleteSubCategory = async (req, res) => {
-//   try {
-//     const { id } = req.params
-
-//     const subCategory = await SubCategory.findByPk(id)
-//     if (!subCategory) {
-//       return res.status(404).json({ message: "Subcategory not found" })
-//     }
-
-//     subCategory.isActive = false
-//     await subCategory.save()
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Subcategory deleted"
-//     })
-//   } catch (error) {
-//     res.status(500).json({ message: error.message })
-//   }
-// }
 
 exports.updateSubCategory = async (req, res) => {
   const t = await sequelize.transaction();
@@ -192,5 +149,53 @@ exports.deleteSubCategory = async (req, res) => {
   } catch (error) {
     await t.rollback();
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+// GET ALL SUBCATEGORIES WITH PRODUCT COUNTS (Active products only)
+exports.getAllSubCategoriesWithCounts = async (req, res) => {
+  try {
+    const subCategories = await SubCategory.findAll({
+      attributes: [
+        "id",
+        "name",
+        "categoryId",
+        "isActive",
+        [
+          sequelize.fn("COUNT", sequelize.col("Products.id")),
+          "productCount",        ],
+      ],
+      include: [
+        {
+          model: Category,
+          as: "category",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Product,
+          as: "Products",
+          attributes: [],
+          required: false,
+          where: { isActive: true },
+        },
+      ],
+      group: ["SubCategory.id", "category.id"],
+      where: { isActive: true },
+      order: [[sequelize.literal("productCount"), "DESC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: subCategories,
+    });
+  } catch (error) {
+    console.error("GetAllSubCategoriesWithCounts Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch subcategories",
+      error: error.message,
+    });
   }
 };

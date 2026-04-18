@@ -70,36 +70,7 @@ exports.getByCategory = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-// exports.updateProductCategory = async (req, res) => {
-//   try {
-//     const { id } = req.params
 
-//     await ProductCategory.update(req.body, {
-//       where: { id }
-//     })
-
-//     res.json({
-//       success: true,
-//       message: "Product category updated"
-//     })
-//   } catch (error) {
-//     res.status(500).json({ message: error.message })
-//   }
-// }
-
-// exports.deleteProductCategory = async (req, res) => {
-//   try {
-//     const data = await ProductCategory.findByPk(req.params.id)
-//     if (!data) {
-//       return res.status(404).json({ message: "Not found" })
-//     }
-
-//     await data.destroy()
-//     res.status(200).json({ success: true, message: "Deleted successfully" })
-//   } catch (error) {
-//     res.status(500).json({ message: error.message })
-//   }
-// }
 
 exports.updateProductCategory = async (req, res) => {
   const t = await sequelize.transaction();
@@ -190,5 +161,49 @@ exports.deleteProductCategory = async (req, res) => {
   } catch (error) {
     await t.rollback();
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+// GET ALL PRODUCT CATEGORIES WITH PRODUCT COUNTS (Active products only)
+exports.getAllProductCategoriesWithCounts = async (req, res) => {
+  try {
+    const productCategories = await ProductCategory.findAll({
+      attributes: [
+        "id",
+        "name",
+        "categoryId",
+        "subCategoryId",
+        "isActive",
+        [
+          sequelize.fn("COUNT", sequelize.col("Products.id")),
+          "productCount",
+        ],
+      ],
+      include: [
+        {
+          model: Product,
+          as: "Products",
+          attributes: [],
+          required: false,
+          where: { isActive: true },
+        },
+      ],
+      group: ["ProductCategory.id"],
+      where: { isActive: true },
+      order: [[sequelize.literal("productCount"), "DESC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: productCategories,
+    });
+  } catch (error) {
+    console.error("GetAllProductCategoriesWithCounts Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch product categories",
+      error: error.message,
+    });
   }
 };

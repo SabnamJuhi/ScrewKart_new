@@ -53,6 +53,8 @@ exports.createCategory = async (req, res) => {
 //   }
 // }
 
+
+
 // GET CATEGORY BY ID (Nested with Sub and Product Categories)
 exports.getCategoryById = async (req, res) => {
   try {
@@ -98,26 +100,6 @@ exports.getCategoryById = async (req, res) => {
   }
 };
 
-//UPDATE CATEGORY
-// exports.updateCategory = async (req, res) => {
-//   const { name, description, isActive } = req.body
-
-//   const category = await Category.findByPk(req.params.id)
-//   if (!category) {
-//     return res.status(404).json({ message: "Category not found" })
-//   }
-
-//   await category.update({
-//     name: name ?? category.name,
-//     description: description ?? category.description,
-//     isActive: isActive ?? category.isActive
-//   })
-
-//   res.json({
-//     message: "Category updated successfully",
-//     category
-//   })
-// }
 
 exports.updateCategory = async (req, res) => {
   const t = await sequelize.transaction();
@@ -198,18 +180,6 @@ exports.updateCategory = async (req, res) => {
   }
 };
 
-//DELETE CATEGORY (Admin – Soft Delete)
-// exports.deleteCategory = async (req, res) => {
-//   const category = await Category.findByPk(req.params.id)
-
-//   if (!category) {
-//     return res.status(404).json({ message: "Category not found" })
-//   }
-
-//   await category.update({ isActive: false })
-
-//   res.json({ message: "Category disabled successfully" })
-// }
 
 exports.deleteCategory = async (req, res) => {
   const t = await sequelize.transaction();
@@ -261,116 +231,6 @@ exports.deleteCategory = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-// GET ALL CATEGORIES (Nested with Sub and Product Categories)
-// exports.getAllNestedCategories = async (req, res) => {
-//   try {
-//     const categories = await Category.findAll({
-//       attributes: ["id", "name", "isActive"],
-//       include: [
-//         {
-//           model: SubCategory,
-//           as: "subcategories", // Matches 'as' in models/index.js
-//           attributes: ["id", "name", "isActive"],
-//           include: [
-//             {
-//               model: ProductCategory,
-//               as: "productCategories", // Matches 'as' in models/index.js
-//               attributes: ["id", "name", "isActive"]
-//             }
-//           ]
-//         }
-//       ],
-//       order: [["id", "ASC"]]
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       data: categories
-//     });
-//   } catch (error) {
-//     console.error("GetAllCategories Error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Failed to fetch categories",
-//       error: error.message
-//     });
-//   }
-// };
-
-// exports.getAllNestedCategories = async (req, res) => {
-//   try {
-//     const categories = await Category.findAll({
-//       attributes: ["id", "name", "isActive"],
-
-//       include: [
-//         {
-//           model: SubCategory,
-//           as: "subcategories",
-//           attributes: ["id", "name", "isActive"],
-
-//           include: [
-//             {
-//               model: ProductCategory,
-//               as: "productCategories",
-//               attributes: [
-//                 "id",
-//                 "name",
-//                 "isActive",
-
-//                 // ✅ COUNT only ACTIVE products
-//                 [
-//                   sequelize.fn(
-//                     "COUNT",
-//                     sequelize.col("subcategories->productCategories->Products.id")
-//                   ),
-//                   "productCount",
-//                 ],
-//               ],
-
-//               include: [
-//                 {
-//                   model: Product,
-//                   as: "Products",
-//                   attributes: [],
-//                   required: false, // keep category even if 0 active products
-//                   where: {
-//                     isActive: true, // ✅ ONLY ACTIVE PRODUCTS COUNTED
-//                   },
-//                 },
-//               ],
-//             },
-//           ],
-//         },
-//       ],
-
-//       // ✅ Required for aggregation to work correctly
-//       group: [
-//         "Category.id",
-//         "subcategories.id",
-//         "subcategories->productCategories.id",
-//       ],
-
-//       order: [["id", "ASC"]],
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       data: categories,
-//     });
-
-//   } catch (error) {
-//     console.error("GetAllNestedCategories Error:", error);
-
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to fetch categories",
-//       error: error.message,
-//     });
-//   }
-// };
-
-
 
 
 exports.getAllNestedCategories = async (req, res) => {
@@ -501,4 +361,45 @@ exports.getAllNestedCategories = async (req, res) => {
   }
 };
 
+
+// GET CATEGORIES WITH PRODUCT COUNTS (Public)
+exports.getCategoriesWithProductCount = async (req, res) => {
+  try {
+    const categories = await Category.findAll({
+      attributes: [
+        "id",
+        "name",
+        "isActive",
+        [
+          sequelize.fn("COUNT", sequelize.col("Products.id")),
+          "productCount",
+        ],
+      ],
+      include: [
+        {
+          model: Product,
+          as: "Products",
+          attributes: [],
+          required: false,
+          where: { isActive: true },
+        },
+      ],
+      group: ["Category.id"],
+      where: { isActive: true }, // Only show active categories
+      order: [["name", "ASC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: categories,
+    });
+  } catch (error) {
+    console.error("GetCategoriesWithProductCount Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch categories",
+      error: error.message,
+    });
+  }
+};
 
