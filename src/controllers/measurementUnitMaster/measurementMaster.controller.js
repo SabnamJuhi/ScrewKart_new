@@ -1,4 +1,4 @@
-const MeasurementMaster = require("../../models/measurements/MeasurementMaster.model");
+const MeasurementMaster = require("../../models/measurements/measurementMaster.model");
 
 /* ---------------- CREATE MEASUREMENT ---------------- */
 exports.createMeasurement = async (req, res) => {

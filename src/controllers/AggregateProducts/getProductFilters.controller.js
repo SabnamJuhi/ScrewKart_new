@@ -248,9 +248,9 @@ const sequelize = require("../../config/db");
 const Product = require("../../models/products/product.model");
 const ProductPrice = require("../../models/products/price.model");
 const ProductVariant = require("../../models/productVariants/productVariant.model");
-const ProductAttribute = require("../../models/products/ProductAttribute.model");
-const ProductMeasurement = require("../../models/products/ProductMeasurement.model");
-const MeasurementMaster = require("../../models/measurements/MeasurementMaster.model");
+const ProductAttribute = require("../../models/products/productAttribute.model");
+const ProductMeasurement = require("../../models/products/productMeasurement.model");
+const MeasurementMaster = require("../../models/measurements/measurementMaster.model");
 
 const { Category, SubCategory, ProductCategory } = require("../../models");
 

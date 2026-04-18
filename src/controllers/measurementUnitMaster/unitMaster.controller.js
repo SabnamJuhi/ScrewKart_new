@@ -1,4 +1,4 @@
-const UnitMaster = require("../../models/measurements/UnitMaster.model");
+const UnitMaster = require("../../models/measurements/unitMaster.model");
 
 /* ---------------- CREATE UNIT ---------------- */
 exports.createUnit = async (req, res) => {

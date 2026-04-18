@@ -42,10 +42,12 @@ const Store = require("./store/store.model");
 const StoreInventory = require("./products/storeInventory.model");
 const ProductAttribute = require("./products/productAttribute.model");
 const ProductMeasurement = require("./products/productMeasurement.model");
-const MeasurementMaster = require("./measurements/MeasurementMaster.model");
+const MeasurementMaster = require("./measurements/measurementMaster.model");
 const VariantPricingSlab = require("./products/variantPricingSlab.model");
 const DeliverySlot = require("./delivery/deliverySlot.model");
 const Notification = require("./notificationStatus/notificationStatus.model")
+
+
 
 
 

@@ -6,9 +6,9 @@ const ProductPrice = require("../../models/products/price.model");
 const ProductVariant = require("../../models/productVariants/productVariant.model");
 const VariantImage = require("../../models/productVariants/variantImage.model");
 
-const ProductAttribute = require("../../models/products/ProductAttribute.model");
-const ProductMeasurement = require("../../models/products/ProductMeasurement.model");
-const MeasurementMaster = require("../../models/measurements/MeasurementMaster.model");
+const ProductAttribute = require("../../models/products/productAttribute.model");
+const ProductMeasurement = require("../../models/products/productMeasurement.model");
+const MeasurementMaster = require("../../models/measurements/measurementMaster.model");
 
 const Offer = require("../../models/offers/offer.model");
 const OfferSub = require("../../models/offers/offerSub.model");
