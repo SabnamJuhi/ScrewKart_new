@@ -36,15 +36,12 @@ router.post("/place", protected, orderController.placeOrder);
 router.post("/verifyPayment", protected, orderController.verifyRazorpayPayment,);
 
 
-
 // --- Delivery Boy Auth ---
 router.post("/register", adminAuthMiddleware, uploadDeliveryBoyDocsMiddleware, registerDeliveryBoy);
 router.post("/login", loginDeliveryBoy);
 router.get("/deliveryBoys", adminAuthMiddleware, getAllDeliveryBoys);
 router.patch("/deliveryBoys/:id", adminAuthMiddleware, uploadDeliveryBoyDocsMiddleware, updateDeliveryBoy);
 router.delete("/deliveryBoys/:id",adminAuthMiddleware, deleteDeliveryBoy);
-
-
 
 
 //USER — My Orders API
@@ -62,7 +59,6 @@ router.post("/:orderNumber/cancelForPickup", cancelPickupOrder)
 
 //Cancel order by Admin
 router.post("/:orderNumber/cancelByAdmin", adminAuthMiddleware, allowAdminRoles("superAdmin", "storeAdmin"), checkStoreAccess, adminCancelOrder)
-
 
 
 //Admin-get-Orders
