@@ -307,33 +307,81 @@ exports.bulkCreateProductsFromExcel = async (req, res) => {
           currency: currency || "INR",
         }, { transaction: t });
 
-        /* ---------------- ATTRIBUTES ---------------- */
-        if (attributes) {
-          const parsed = parseJSON(attributes, "attributes");
+       /* ---------------- ATTRIBUTES ---------------- */
+if (attributes) {
+  const parsed = parseJSON(attributes, "attributes");
 
-          const attrRows = Object.entries(parsed).map(([k, v]) => ({
-            productId: product.id,
-            variantId: variant.id,
-            attributeKey: k,
-            attributeValue: v,
-          }));
+  if (!productMap[key].baseAttributes) {
+    // FIRST VARIANT → store as PRODUCT LEVEL
+    const productAttrRows = Object.entries(parsed).map(([k, v]) => ({
+      productId: product.id,
+      variantId: null,
+      attributeKey: k,
+      attributeValue: v,
+    }));
 
-          await ProductAttribute.bulkCreate(attrRows, { transaction: t });
-        }
+    await ProductAttribute.bulkCreate(productAttrRows, { transaction: t });
 
-        /* ---------------- MEASUREMENTS ---------------- */
-        if (measurements) {
-          const parsed = parseJSON(measurements, "measurements");
+    productMap[key].baseAttributes = parsed;
+  } else {
+    // NEXT VARIANTS → compare
+    const variantAttrRows = [];
 
-          const measRows = Object.entries(parsed).map(([k, v]) => ({
-            productId: product.id,
-            variantId: variant.id,
-            measurementId: Number(k), // assuming ID mapping
-            value: v,
-          }));
+    for (const [k, v] of Object.entries(parsed)) {
+      const baseValue = productMap[key].baseAttributes[k];
 
-          await ProductMeasurement.bulkCreate(measRows, { transaction: t });
-        }
+      if (baseValue !== v) {
+        // DIFFERENT → store as variant-level
+        variantAttrRows.push({
+          productId: product.id,
+          variantId: variant.id,
+          attributeKey: k,
+          attributeValue: v,
+        });
+      }
+    }
+
+    if (variantAttrRows.length) {
+      await ProductAttribute.bulkCreate(variantAttrRows, { transaction: t });
+    }
+  }
+}
+      /* ---------------- MEASUREMENTS ---------------- */
+if (measurements) {
+  const parsed = parseJSON(measurements, "measurements");
+
+  if (!productMap[key].baseMeasurements) {
+    const productMeasRows = Object.entries(parsed).map(([k, v]) => ({
+      productId: product.id,
+      variantId: null,
+      measurementId: Number(k),
+      value: v,
+    }));
+
+    await ProductMeasurement.bulkCreate(productMeasRows, { transaction: t });
+
+    productMap[key].baseMeasurements = parsed;
+  } else {
+    const variantMeasRows = [];
+
+    for (const [k, v] of Object.entries(parsed)) {
+      const baseValue = productMap[key].baseMeasurements[k];
+
+      if (baseValue !== v) {
+        variantMeasRows.push({
+          productId: product.id,
+          variantId: variant.id,
+          measurementId: Number(k),
+          value: v,
+        });
+      }
+    }
+
+    if (variantMeasRows.length) {
+      await ProductMeasurement.bulkCreate(variantMeasRows, { transaction: t });
+    }
+  }
+}
 
         /* ---------------- PRICING SLABS ---------------- */
         if (pricingSlabs) {
