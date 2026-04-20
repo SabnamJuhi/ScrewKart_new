@@ -122,31 +122,42 @@ exports.getAllSlotsForDate = async (req, res) => {
 // Get customer available slots with location check
 exports.getCustomerAvailableSlots = async (req, res) => {
   try {
-    const { date, latitude, longitude } = req.query;
+    const { date, latitude, longitude, storeId } = req.query; // ✅ Add storeId parameter
     
-    if (!date) {
-      return res.status(400).json({
-        success: false,
-        message: "Date is required"
-      });
+    // ... validation code ...
+    
+    // ✅ Use dynamic store ID or find nearest store
+    let store;
+    if (storeId) {
+      store = await Store.findOne({ where: { id: storeId } });
+    } else {
+      // Find nearest active store
+      const allStores = await Store.findAll({ where: { isActive: true } });
+      
+      let nearestStore = null;
+      let minDistance = Infinity;
+      
+      for (const s of allStores) {
+        const distance = getDistanceKm(
+          parseFloat(latitude), 
+          parseFloat(longitude),
+          parseFloat(s.latitude), 
+          parseFloat(s.longitude)
+        );
+        
+        if (distance < minDistance && distance <= s.deliveryRadius) {
+          minDistance = distance;
+          nearestStore = s;
+        }
+      }
+      
+      store = nearestStore;
     }
-    
-    if (!latitude || !longitude) {
-      return res.status(400).json({
-        success: false,
-        message: "Location coordinates are required"
-      });
-    }
-    
-    // Get store
-    const store = await Store.findOne({
-      where: { id: 210001 } // Use the actual store ID from your data
-    });
     
     if (!store) {
       return res.status(404).json({
         success: false,
-        message: "Store not found"
+        message: "No stores available for delivery at this location"
       });
     }
     
