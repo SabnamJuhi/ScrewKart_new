@@ -1,6 +1,6 @@
 const axios = require("axios");
 
-const sendOTP = async (mobile, otp) => {
+const sendOTP = async (mobile) => {
   try {
     const response = await fetch("https://api.msg91.com/api/v5/otp", {
       method: "POST",
@@ -11,22 +11,21 @@ const sendOTP = async (mobile, otp) => {
       body: JSON.stringify({
         template_id: process.env.MSG91_TEMPLATE_ID,
         mobile: `91${mobile}`,
-        otp: otp,
       }),
     });
 
     const data = await response.json();
 
-    // ✅ IMPORTANT: check response manually (fetch doesn't throw on 4xx/5xx)
     if (!response.ok) {
       console.error("❌ MSG91 Error:", data);
       throw new Error("Failed to send OTP");
     }
 
-    console.log("✅ MSG91 Success:", data);
+    console.log("✅ OTP Sent:", data);
+    return data;
 
   } catch (error) {
-    console.error("❌ Fetch Error:", error.message);
+    console.error("❌ OTP Error:", error.message);
     throw error;
   }
 };

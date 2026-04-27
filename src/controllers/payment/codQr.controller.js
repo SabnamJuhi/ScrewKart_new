@@ -6,12 +6,11 @@ exports.generateCODQR = async (req, res) => {
   try {
     // const { orderId } = req.body;
     const { orderNumber } = req.body;
-console.log("Incoming orderNumber:", orderNumber);
-   console.log("Incoming orderNumber:", orderNumber);
+    console.log("Incoming orderNumber:", orderNumber);
 
     const order = await Order.findOne({
-  where: { orderNumber }
-});
+      where: { orderNumber },
+    });
     console.log("Order from DB:", order);
 
     if (!order) {
@@ -63,18 +62,8 @@ console.log("Incoming orderNumber:", orderNumber);
 
     const user = await User.findByPk(order.userId);
 
-    // const paymentLink = await razorpayService.createPaymentLink({
-    //   order,
-    //   user,
-    // });
     const qr = await razorpayService.createDynamicQR({ order });
 
-    // // ✅ Save QR + link
-    // await order.update({
-    //   razorpayLinkId: paymentLink.id,
-    //   razorpayQrUrl: paymentLink.qr_code,
-    //   paymentStatus: "unpaid",
-    // });
     await order.update({
       razorpayQrId: qr.id,
       razorpayQrUrl: qr.image_url,

@@ -1,5 +1,7 @@
 
 
+
+const sequelize = require("../../config/db");
 const { Op, fn, col, literal, Sequelize } = require("sequelize");
 const { Order, User, Product, OrderItem, ProductVariant, VariantSize, ProductReview, ProductRating } = require("../../models");
 const moment = require("moment");
@@ -151,25 +153,30 @@ exports.getDashboardStats = async (req, res) => {
     // 9. Top Selling Variants - Using raw query to avoid GROUP BY issues
     let topSellingVariants = [];
     try {
-      const [variantResults] = await sequelize.query(`
-        SELECT 
-          oi.variantId,
-          pv.variantCode,
-          pv.unit,
-          pv.packQuantity,
-          p.title as productTitle,
-          SUM(oi.quantity) as totalSold,
-          SUM(oi.totalPrice) as totalRevenue,
-          AVG(oi.finalPerUnit) as avgPrice
-        FROM order_items oi
-        INNER JOIN orders o ON oi.orderId = o.id
-        LEFT JOIN product_variants pv ON oi.variantId = pv.id
-        LEFT JOIN products p ON pv.productId = p.id
-        WHERE o.paymentStatus = 'paid'
-        GROUP BY oi.variantId
-        ORDER BY totalSold DESC
-        LIMIT 10
-      `);
+     const [variantResults] = await sequelize.query(`
+  SELECT 
+    oi.variantId,
+    pv.variantCode,
+    pv.unit,
+    pv.packQuantity,
+    p.title as productTitle,
+    SUM(oi.quantity) as totalSold,
+    SUM(oi.totalPrice) as totalRevenue,
+    AVG(oi.finalPerUnit) as avgPrice
+  FROM order_items oi
+  INNER JOIN orders o ON oi.orderId = o.id
+  LEFT JOIN product_variants pv ON oi.variantId = pv.id
+  LEFT JOIN products p ON pv.productId = p.id
+  WHERE o.paymentStatus = 'paid'
+  GROUP BY 
+    oi.variantId,
+    pv.variantCode,
+    pv.unit,
+    pv.packQuantity,
+    p.title
+  ORDER BY totalSold DESC
+  LIMIT 10
+`);
       
       topSellingVariants = variantResults.map(item => ({
         variantId: item.variantId,

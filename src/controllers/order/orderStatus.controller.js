@@ -6,12 +6,14 @@ const {
   ProductVariant,
   OrderAddress,
   Store,
+  sequelize,
 } = require("../../models");
 const {
   createOrderNotification,
   createDeliveryNotification,
   createAdminNotification,
 } = require("../../services/notificatonInApp.service");
+const updateProductSoldCount = require("../../utils/updateProductSoldCount");
 
 // ✅ Try to import DeliveryBoy, with fallback
 let DeliveryBoy;
@@ -184,17 +186,17 @@ exports.assignDeliveryBoy = async (req, res) => {
       dispatchedAt: new Date(),
     });
 
-     await createOrderNotification({
+    await createOrderNotification({
       userId: order.userId,
       orderId: order.id,
       orderNumber: order.orderNumber,
       status: order.status,
     });
     await createDeliveryNotification({
-  deliveryBoyId,
-  orderId: order.id,
-  orderNumber: order.orderNumber,
-});
+      deliveryBoyId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+    });
 
     await notifyDeliveryBoy(deliveryBoy, order);
 
@@ -228,6 +230,7 @@ exports.assignDeliveryBoy = async (req, res) => {
  * DELIVERY BOY: Mark as delivered with OTP verification
  */
 exports.markAsDelivered = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { orderNumber } = req.params;
     const { otp } = req.body;
@@ -254,6 +257,9 @@ exports.markAsDelivered = async (req, res) => {
         message: "Order not found",
       });
     }
+
+    // ✅ Prevent duplicate soldCount update
+    const wasCompleted = order.status === "completed";
 
     // Verify delivery boy assignment
     if (order.deliveryBoyId !== deliveryBoyId) {
@@ -285,23 +291,28 @@ exports.markAsDelivered = async (req, res) => {
       deliveredAt: new Date(),
     };
 
-    // For COD orders, mark as completed immediately
     if (order.paymentMethod === "COD") {
-
-  // If already paid via QR
-  if (order.paymentStatus === "paid") {
-    updateData.status = "completed";
-    updateData.completedAt = new Date();
-  } else {
-    // Cash collected manually
-    updateData.paymentStatus = "paid";
-    updateData.status = "completed";
-    updateData.completedAt = new Date();
-  }
-}
+      // Cash collected
+      updateData.paymentStatus = "paid";
+      updateData.status = "completed";
+      updateData.completedAt = new Date();
+    } else {
+      // ONLINE PAYMENT
+      if (order.paymentStatus === "paid") {
+        updateData.status = "completed";
+        updateData.completedAt = new Date();
+      }
+    }
 
     await order.update(updateData);
-  
+    /* ---------------- SOLD COUNT UPDATE ---------------- */
+    let soldCountResult = null;
+
+    if (!wasCompleted && updateData.status === "completed") {
+      soldCountResult = await updateProductSoldCount(order.id, t);
+    }
+    await t.commit();
+
     await createOrderNotification({
       userId: order.userId,
       orderId: order.id,
@@ -309,11 +320,11 @@ exports.markAsDelivered = async (req, res) => {
       status: order.status,
     });
     await createAdminNotification({
-  orderId: order.id,
-  orderNumber: order.orderNumber,
-  storeId: order.storeId, // ✅ VERY IMPORTANT
-  type: "completed",
-});
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      storeId: order.storeId, // ✅ VERY IMPORTANT
+      type: "completed",
+    });
 
     res.json({
       success: true,
@@ -325,9 +336,11 @@ exports.markAsDelivered = async (req, res) => {
         orderNumber: order.orderNumber,
         status: updateData.status,
         deliveredAt: updateData.deliveredAt || new Date(),
+        soldCountUpdate: soldCountResult,
       },
     });
   } catch (err) {
+    await t.rollback();
     console.error("Mark as delivered error:", err);
     res.status(500).json({
       success: false,
@@ -778,7 +791,6 @@ exports.getOrderTimeline = async (req, res) => {
 //   }
 // };
 
-
 /**
  * DELIVERY BOY: Get my assigned orders
  */
@@ -975,12 +987,11 @@ exports.getMyAssignedOrders = async (req, res) => {
 
     // ✅ NEW: split orders
     const completedOrders = formattedOrders.filter(
-      (o) => o.status === "delivered"
+      (o) => o.status === "delivered",
     );
 
     const remainingOrders = formattedOrders.filter(
-      (o) =>
-        o.status === "dispatched" || o.status === "out_for_delivery"
+      (o) => o.status === "dispatched" || o.status === "out_for_delivery",
     );
 
     // Summary (slightly enhanced)
@@ -994,15 +1005,15 @@ exports.getMyAssignedOrders = async (req, res) => {
       dispatched: orders.filter((o) => o.status === "dispatched").length,
 
       todaysDeliveries: orders.filter(
-        (o) => o.deliveryDate === new Date().toISOString().split("T")[0]
+        (o) => o.deliveryDate === new Date().toISOString().split("T")[0],
       ).length,
 
       pendingStorePickup: orders.filter(
-        (o) => o.status === "dispatched" && o.deliveryPickupOtpVerified !== 1
+        (o) => o.status === "dispatched" && o.deliveryPickupOtpVerified !== 1,
       ).length,
 
       pendingCustomerDelivery: orders.filter(
-        (o) => o.status === "out_for_delivery" && o.otpVerified !== 1
+        (o) => o.status === "out_for_delivery" && o.otpVerified !== 1,
       ).length,
     };
 
