@@ -84,6 +84,8 @@ app.use('/api/appNotification', require("./routes/notifications/notifications.ro
 
 app.use('/api/payment', require("./routes/payment/payment.routes"))
 
+app.use("/api/billing-addresses", require("./routes/order/userBillingAddress.routes"));
+
 
 app.use((err, req, res, next) => {
   console.error("GLOBAL ERROR:", err);

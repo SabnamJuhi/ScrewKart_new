@@ -42,6 +42,8 @@ const {
   sendOrderNotification,
 } = require("../../services/notificationInSMS.service");
 const generatePackingSlip = require("../../utils/generatePackingSlip");
+const OrderBillingAddress = require("../../models/orders/orderBillingAddress.model");
+const UserBillingAddress = require("../../models/orders/userBillingAddress.model");
 
 function generateOtp() {
   return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
@@ -62,6 +64,9 @@ exports.placeOrder = async (req, res) => {
       deliverySlotId: requestedSlotId,
       deliveryDate: requestedDate,
       pickupTime, // Optional: customer can specify pickup time
+      billingAddressId,
+      billingAddress,
+      sameAsShipping = false,
     } = req.body;
 
     if (!addressId) throw new Error("Address is required");
@@ -683,6 +688,115 @@ exports.placeOrder = async (req, res) => {
       `${userAddress.addressLine}, ${userAddress.city}, ${userAddress.state} ${userAddress.zipCode}, ${userAddress.country}`;
 
     await OrderAddress.create(addressData, { transaction: t });
+
+    // ================= BILLING ADDRESS SNAPSHOT =================
+
+    let billingData = null;
+
+    // ======================================
+    // SAME AS SHIPPING
+    // ======================================
+
+    if (sameAsShipping) {
+      billingData = {
+        orderId: order.id,
+
+        fullName: userAddress.fullName,
+        companyName: null,
+        gstNumber: null,
+        panNumber: null,
+
+        addressLine1: userAddress.addressLine,
+        addressLine2: userAddress.selectedAddressLine,
+
+        landmark: userAddress.landmark || userAddress.area,
+
+        city: userAddress.city,
+        state: userAddress.state,
+        pincode: userAddress.zipCode,
+        country: userAddress.country || "India",
+      };
+    }
+
+    // ======================================
+    // EXISTING BILLING ADDRESS
+    // ======================================
+    else if (billingAddressId) {
+      const existingBilling = await UserBillingAddress.findOne({
+        where: {
+          id: billingAddressId,
+          userId,
+        },
+        transaction: t,
+      });
+
+      if (!existingBilling) {
+        throw new Error("Invalid billing address");
+      }
+
+      billingData = {
+        orderId: order.id,
+
+        fullName: existingBilling.fullName,
+        companyName: existingBilling.companyName,
+        gstNumber: existingBilling.gstNumber,
+        panNumber: existingBilling.panNumber,
+
+        addressLine1: existingBilling.addressLine1,
+        addressLine2: existingBilling.addressLine2,
+
+        landmark: existingBilling.landmark,
+
+        city: existingBilling.city,
+        state: existingBilling.state,
+        pincode: existingBilling.pincode,
+        country: existingBilling.country,
+      };
+    }
+
+    // ======================================
+    // NEW BILLING ADDRESS
+    // ======================================
+    else if (billingAddress) {
+      // save reusable billing address
+
+      const savedBilling = await UserBillingAddress.create(
+        {
+          userId,
+          ...billingAddress,
+        },
+        {
+          transaction: t,
+        },
+      );
+
+      billingData = {
+        orderId: order.id,
+
+        fullName: savedBilling.fullName,
+        companyName: savedBilling.companyName,
+        gstNumber: savedBilling.gstNumber,
+        panNumber: savedBilling.panNumber,
+
+        addressLine1: savedBilling.addressLine1,
+        addressLine2: savedBilling.addressLine2,
+
+        landmark: savedBilling.landmark,
+
+        city: savedBilling.city,
+        state: savedBilling.state,
+        pincode: savedBilling.pincode,
+        country: savedBilling.country,
+      };
+    }
+
+    // ======================================
+    // SAVE ORDER BILLING SNAPSHOT
+    // ======================================
+
+    if (billingData) {
+      await OrderBillingAddress.create(billingData, { transaction: t });
+    }
 
     // ================= STOCK DEDUCT =================
     for (const itemData of orderItemsData) {
