@@ -38,6 +38,10 @@ const {
   createOrderNotification,
   createAdminNotification,
 } = require("../../services/notificatonInApp.service");
+const {
+  sendOrderNotification,
+} = require("../../services/notificationInSMS.service");
+const generatePackingSlip = require("../../utils/generatePackingSlip");
 
 function generateOtp() {
   return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
@@ -722,64 +726,16 @@ exports.placeOrder = async (req, res) => {
       status: order.status, // pending or confirmed
     });
     await createAdminNotification({
-  orderId: order.id,
-  orderNumber: order.orderNumber,
-   storeId: order.storeId, 
-  type: "confirmed",
-});
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      storeId: order.storeId,
+      type: "confirmed",
+    });
+    if (paymentMethod === "COD") {
+      await sendOrderNotification(order, "COD_CONFIRMED");
+    }
 
     // ================= GENERATE INVOICE AFTER COMMIT =================
-    // let invoicePath = null;
-    // const fs = require('fs');
-    // const path = require('path');
-
-    // try {
-    //   console.log("📄 Generating invoice for order:", order.orderNumber);
-    //   console.log("Order items count:", orderItems.length);
-
-    //   // Ensure invoices directory exists
-    //   const invoiceDir = path.join(process.cwd(), 'invoices');
-    //   if (!fs.existsSync(invoiceDir)) {
-    //     fs.mkdirSync(invoiceDir, { recursive: true });
-    //   }
-
-    //   // Generate invoice using in-memory data
-    //   invoicePath = await generateInvoice({
-    //     order: order.toJSON ? order.toJSON() : order,
-    //     orderItems: orderItems.map(item => item.toJSON ? item.toJSON() : item),
-    //     address: addressData,
-    //   });
-
-    //   if (invoicePath && fs.existsSync(invoicePath)) {
-    //     console.log("✅ Invoice generated successfully at:", invoicePath);
-
-    //     // Update database with invoice info
-    //     await Order.update(
-    //       {
-    //         invoiceUrl: invoicePath,
-    //         invoiceStatus: "generated",
-    //       },
-    //       {
-    //         where: { id: order.id },
-    //       }
-    //     );
-    //     console.log("✅ Invoice URL saved to database for order:", order.orderNumber);
-    //   } else {
-    //     console.warn("⚠️ Invoice generation returned invalid path");
-    //     await Order.update(
-    //       { invoiceStatus: "failed" },
-    //       { where: { id: order.id } }
-    //     );
-    //   }
-
-    // } catch (err) {
-    //   console.error("❌ Invoice generation failed:", err.message);
-    //   await Order.update(
-    //     { invoiceStatus: "failed" },
-    //     { where: { id: order.id } }
-    //   ).catch(console.error);
-    // }
-
     // Only generate invoice for COD
     let invoicePath = null;
     const fs = require("fs");
@@ -792,16 +748,18 @@ exports.placeOrder = async (req, res) => {
           fs.mkdirSync(invoiceDir, { recursive: true });
         }
 
-        invoicePath = await generateInvoice({
+        const invoiceData = await generateInvoice({
           order: order.toJSON ? order.toJSON() : order,
           orderItems: orderItems,
           address: addressData,
         });
 
-        if (invoicePath && fs.existsSync(invoicePath)) {
+        if (invoiceData?.filePath && fs.existsSync(invoiceData.filePath)) {
+          invoicePath = invoiceData.filePath;
+
           await Order.update(
             {
-              invoiceUrl: invoicePath,
+              invoiceUrl: invoiceData.fileUrl, // save URL in DB
               invoiceStatus: "generated",
             },
             { where: { id: order.id } },
@@ -813,6 +771,54 @@ exports.placeOrder = async (req, res) => {
           { where: { id: order.id } },
         );
       }
+    }
+
+    // Generate packng slip
+    let packingSlipPath = null;
+
+    try {
+      packingSlipPath = await generatePackingSlip({
+        order: order.toJSON(),
+        orderItems: orderItems,
+        address: addressData,
+      });
+
+      if (packingSlipPath) {
+        await Order.update(
+          {
+            packingSlipUrl: packingSlipPath,
+            packingSlipStatus: "generated",
+          },
+          {
+            where: { id: order.id },
+          },
+        );
+
+        console.log("✅ Packing slip generated:", packingSlipPath);
+      } else {
+        await Order.update(
+          {
+            packingSlipUrl: null,
+            packingSlipStatus: "failed",
+          },
+          {
+            where: { id: order.id },
+          },
+        );
+
+        console.log("❌ Packing slip generation failed");
+      }
+    } catch (err) {
+      console.error("Packing slip generation failed:", err);
+      await Order.update(
+        {
+          packingSlipUrl: null,
+          packingSlipStatus: "failed",
+        },
+        {
+          where: { id: order.id },
+        },
+      );
     }
 
     // ================= SEND EMAIL =================
@@ -928,120 +934,6 @@ exports.placeOrder = async (req, res) => {
   }
 };
 
-// exports.verifyRazorpayPayment = async (req, res) => {
-//   const t = await sequelize.transaction();
-
-//   try {
-//     const {
-//       razorpay_order_id,
-//       razorpay_payment_id,
-//       razorpay_signature,
-//       orderNumber,
-//     } = req.body;
-
-//     const body = razorpay_order_id + "|" + razorpay_payment_id;
-
-//     const expectedSignature = crypto
-//       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-//       .update(body.toString())
-//       .digest("hex");
-
-//     if (expectedSignature !== razorpay_signature) {
-//       throw new Error("Payment verification failed");
-//     }
-
-//     const order = await Order.findOne({
-//       where: { orderNumber },
-//       include: [OrderItem],
-//       transaction: t,
-//       lock: true,
-//     });
-
-//     if (!order) throw new Error("Order not found");
-
-//     if (order.paymentStatus === "paid") {
-//       await t.commit();
-//       return res.json({ success: true });
-//     }
-
-//     await order.update(
-//       {
-//         status: "confirmed",
-//         paymentStatus: "paid",
-//         transactionId: razorpay_payment_id,
-//         paidAt: new Date(),
-//       },
-//       { transaction: t },
-//     );
-
-//    // AFTER order.update (payment success)
-// const fs = require("fs");
-// const path = require("path");
-
-// const address = await OrderAddress.findOne({
-//   where: { orderId: order.id },
-// });
-
-// const invoiceDir = path.join(process.cwd(), "invoices");
-// if (!fs.existsSync(invoiceDir)) {
-//   fs.mkdirSync(invoiceDir, { recursive: true });
-// }
-
-// let invoicePath = null;
-
-// try {
-//   invoicePath = await generateInvoice({
-//     order: order.toJSON(),
-//     orderItems: order.OrderItems.map(i => i.toJSON()),
-//     address: address?.toJSON(),
-//   });
-
-//   if (invoicePath && fs.existsSync(invoicePath)) {
-//     await order.update({
-//       invoiceUrl: invoicePath,
-//       invoiceStatus: "generated",
-//     });
-//   } else {
-//     await order.update({ invoiceStatus: "failed" });
-//   }
-// } catch (err) {
-//   console.error("Invoice generation failed:", err);
-//   await order.update({ invoiceStatus: "failed" });
-// }
-
-// sendInvoiceEmail({
-//   orderNumber: order.orderNumber,
-//   orderAddress: address,
-//   orderItems: order.OrderItems,
-//   totalAmount: order.totalAmount,
-//   subtotal: order.subtotal,
-//   taxAmount: order.taxAmount,
-//   shippingFee: order.shippingFee,
-//   deliveryType: order.deliveryType,
-//   invoicePath: invoicePath || null,
-// }).catch(console.error);
-
-//     await CartItem.destroy({
-//       where: { userId: order.userId },
-//       transaction: t,
-//     });
-
-//     await t.commit();
-
-//     return res.json({
-//       success: true,
-//       message: "Payment verified",
-//     });
-//   } catch (err) {
-//     await t.rollback();
-
-//     return res.status(400).json({
-//       success: false,
-//       message: err.message,
-//     });
-//   }
-// };
-
 exports.verifyRazorpayPayment = async (req, res) => {
   const t = await sequelize.transaction();
 
@@ -1074,8 +966,7 @@ exports.verifyRazorpayPayment = async (req, res) => {
     });
 
     if (!order) throw new Error("Order not found");
-    if (!order.OrderItems?.length)
-      throw new Error("No order items found");
+    if (!order.OrderItems?.length) throw new Error("No order items found");
 
     // ================= ALREADY PAID =================
     if (order.paymentStatus === "paid") {
@@ -1096,7 +987,7 @@ exports.verifyRazorpayPayment = async (req, res) => {
         paidAt: new Date(),
         confirmedAt: new Date(),
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     // ================= CLEAR CART =================
@@ -1115,11 +1006,12 @@ exports.verifyRazorpayPayment = async (req, res) => {
       status: order.status,
     });
     await createAdminNotification({
-  orderId: order.id,
-  orderNumber: order.orderNumber,
-   storeId: order.storeId, 
-  type: "confirmed",
-});
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      storeId: order.storeId,
+      type: "confirmed",
+    });
+    await sendOrderNotification(order, "ONLINE_CONFIRMED");
 
     // ================= RE-FETCH ORDER =================
     const completeOrder = await Order.findOne({
@@ -1169,22 +1061,22 @@ exports.verifyRazorpayPayment = async (req, res) => {
 
       console.log("📄 Generating invoice:", completeOrder.orderNumber);
 
-      invoicePath = await generateInvoice({
-        order: completeOrder.toJSON(),
-        orderItems: orderItemsForInvoice, // ✅ FIXED HERE
-        address: address?.toJSON(),
+      const invoiceData = await generateInvoice({
+        order: order.toJSON ? order.toJSON() : order,
+        orderItems: orderItems,
+        address: addressData,
       });
 
-      if (invoicePath && fs.existsSync(invoicePath)) {
+      if (invoiceData?.filePath && fs.existsSync(invoiceData.filePath)) {
+        invoicePath = invoiceData.filePath;
+
         await Order.update(
           {
-            invoiceUrl: invoicePath,
+            invoiceUrl: invoiceData.fileUrl, // save URL in DB
             invoiceStatus: "generated",
           },
-          { where: { id: completeOrder.id } }
+          { where: { id: order.id } },
         );
-
-        console.log("✅ Invoice generated");
       } else {
         throw new Error("Invoice file not created");
       }
@@ -1193,10 +1085,58 @@ exports.verifyRazorpayPayment = async (req, res) => {
 
       await Order.update(
         { invoiceStatus: "failed" },
-        { where: { id: completeOrder.id } }
+        { where: { id: completeOrder.id } },
       );
 
       invoicePath = null;
+    }
+
+    // Generate packng slip
+    let packingSlipPath = null;
+
+    try {
+      packingSlipPath = await generatePackingSlip({
+        order: order.toJSON(),
+        orderItems: orderItems,
+        address: addressData,
+      });
+
+      if (packingSlipPath) {
+        await Order.update(
+          {
+            packingSlipUrl: packingSlipPath,
+            packingSlipStatus: "generated",
+          },
+          {
+            where: { id: order.id },
+          },
+        );
+
+        console.log("✅ Packing slip generated:", packingSlipPath);
+      } else {
+        await Order.update(
+          {
+            packingSlipUrl: null,
+            packingSlipStatus: "failed",
+          },
+          {
+            where: { id: order.id },
+          },
+        );
+
+        console.log("❌ Packing slip generation failed");
+      }
+    } catch (err) {
+      console.error("Packing slip generation failed:", err);
+      await Order.update(
+        {
+          packingSlipUrl: null,
+          packingSlipStatus: "failed",
+        },
+        {
+          where: { id: order.id },
+        },
+      );
     }
 
     // ================= SEND EMAIL =================
@@ -1226,7 +1166,6 @@ exports.verifyRazorpayPayment = async (req, res) => {
       message: "Payment verified & invoice processed",
       invoiceGenerated: !!invoicePath,
     });
-
   } catch (err) {
     if (t && !t.finished) await t.rollback();
 

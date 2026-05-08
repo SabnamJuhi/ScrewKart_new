@@ -21,7 +21,8 @@ app.use(passport.initialize());
 
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/packing-slips", express.static( path.join(process.cwd(),"storage", "packing-slips") ));
+app.use("/invoices", express.static( path.join(process.cwd(), "storage", "invoices")));
 
 app.use("/api/admin", require("./routes/admin.auth.routes"))
 app.use("/api/auth", require("./routes/user.auth.routes"));

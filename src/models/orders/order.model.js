@@ -75,7 +75,7 @@ const Order = sequelize.define(
       allowNull: true,
     },
 
-     // ✅ NEW FIELDS (ADD THESE)
+    // ✅ NEW FIELDS (ADD THESE)
     razorpayLinkId: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -88,7 +88,7 @@ const Order = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
-    
+
     deliveryBoyId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -117,6 +117,15 @@ const Order = sequelize.define(
     },
 
     invoiceStatus: {
+      type: DataTypes.ENUM("pending", "generated", "failed"),
+      defaultValue: "pending",
+    },
+    packingSlipUrl: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    packingSlipStatus: {
       type: DataTypes.ENUM("pending", "generated", "failed"),
       defaultValue: "pending",
     },

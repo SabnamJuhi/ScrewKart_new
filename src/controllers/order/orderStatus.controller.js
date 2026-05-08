@@ -8,6 +8,7 @@ const {
   Store,
   sequelize,
 } = require("../../models");
+const { sendOrderNotification } = require("../../services/notificationInSMS.service");
 const {
   createOrderNotification,
   createDeliveryNotification,
@@ -43,16 +44,32 @@ async function notifyDeliveryBoy(deliveryBoy, order) {
 }
 
 /**
- * ADMIN: Update order status with proper flow
+ * ADMIN: Update Order Status
+ * Only supports:
+ * confirmed -> picking
+ * picking -> packed
  */
+
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { orderNumber } = req.params;
-    const { status, notes } = req.body;
+    const { status } = req.body;
+
+    /*
+    ===========================================
+    FIND ORDER
+    ===========================================
+    */
 
     const order = await Order.findOne({
       where: { orderNumber },
-      include: [{ model: Store, as: "store", attributes: ["id", "name"] }],
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name"],
+        },
+      ],
     });
 
     if (!order) {
@@ -62,19 +79,25 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
-    // ❌ NO store check here anymore
+    /*
+    ===========================================
+    ALLOWED FLOW
+    ===========================================
+    */
 
     const allowedTransitions = {
-      confirmed: ["picking", "cancelled"],
-      picking: ["packed", "cancelled"],
-      packed: ["dispatched", "cancelled"],
-      dispatched: ["out_for_delivery"],
-      out_for_delivery: ["delivered"],
-      delivered: ["completed"],
+      confirmed: ["picking"],
+      picking: ["packed"],
     };
 
+    /*
+    ===========================================
+    VALIDATE STATUS
+    ===========================================
+    */
+
     if (
-      allowedTransitions[order.status] &&
+      !allowedTransitions[order.status] ||
       !allowedTransitions[order.status].includes(status)
     ) {
       return res.status(400).json({
@@ -83,45 +106,49 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
-    const updateData = { status };
+    /*
+    ===========================================
+    UPDATE DATA
+    ===========================================
+    */
 
-    switch (status) {
-      case "picking":
-        updateData.pickingAt = new Date();
-        break;
-      case "packed":
-        updateData.packedAt = new Date();
-        break;
-      case "dispatched":
-        updateData.dispatchedAt = new Date();
-        break;
-      case "out_for_delivery":
-        updateData.outForDeliveryAt = new Date();
-        break;
-      case "delivered":
-        updateData.deliveredAt = new Date();
-        break;
-      case "completed":
-        updateData.completedAt = new Date();
-        updateData.paymentStatus = "paid";
-        break;
-      case "cancelled":
-        updateData.cancelledAt = new Date();
+    const updateData = {
+      status,
+    };
 
-        if (order.deliverySlotId && order.status !== "dispatched") {
-          const slot = await DeliverySlot.findByPk(order.deliverySlotId);
-          if (slot) {
-            await slot.decrement("currentOrders");
+    /*
+    ===========================================
+    PICKING
+    ===========================================
+    */
 
-            if (slot.currentOrders - 1 < slot.maxCapacity) {
-              await slot.update({ status: "available" });
-            }
-          }
-        }
-        break;
+    if (status === "picking") {
+      updateData.pickingAt = new Date();
     }
 
+    /*
+    ===========================================
+    PACKED
+    ===========================================
+    */
+
+    if (status === "packed") {
+      updateData.packedAt = new Date();
+    }
+
+    /*
+    ===========================================
+    UPDATE ORDER
+    ===========================================
+    */
+
     await order.update(updateData);
+
+    /*
+    ===========================================
+    CREATE NOTIFICATION
+    ===========================================
+    */
 
     await createOrderNotification({
       userId: order.userId,
@@ -130,18 +157,38 @@ exports.updateOrderStatus = async (req, res) => {
       status,
     });
 
+    /*
+    ===========================================
+    RESPONSE
+    ===========================================
+    */
+
     res.json({
       success: true,
       message: `Order status updated to ${status}`,
       data: {
+        id: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
         storeName: order.store?.name,
-        ...updateData,
+
+        pickingAt: order.pickingAt,
+        packedAt: order.packedAt,
+
+        packingSlipUrl:
+          status === "picking"
+            ? order.packingSlipUrl
+            : null,
+
+        packingSlipStatus:
+          status === "picking"
+            ? order.packingSlipStatus
+            : null,
       },
     });
   } catch (err) {
     console.error("Update order status error:", err);
+
     res.status(500).json({
       success: false,
       message: err.message,
@@ -325,6 +372,7 @@ exports.markAsDelivered = async (req, res) => {
       storeId: order.storeId, // ✅ VERY IMPORTANT
       type: "completed",
     });
+    await sendOrderNotification(order, "ORDER_COMPLETED");
 
     res.json({
       success: true,

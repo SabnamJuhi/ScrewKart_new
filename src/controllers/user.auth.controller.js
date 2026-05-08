@@ -10,47 +10,135 @@ const {
   formatPagination,
 } = require("../utils/paginate");
 
+// exports.register = async (req, res) => {
+//   try {
+//     const { userName, email, mobileNumber, password, confirmPassword } =
+//       req.body;
+
+//     if (!userName || !email || !password || !confirmPassword) {
+//       return res.status(400).json({ message: "All fields are required" });
+//     }
+
+//     if (password !== confirmPassword) {
+//       return res.status(400).json({ message: "Passwords do not match" });
+//     }
+
+//     const existingUser = await User.findOne({ where: { email } });
+
+//     if (existingUser) {
+//       return res.status(409).json({ message: "User already exists" });
+//     }
+
+//     const hashedPassword = await hashPassword(password);
+
+//     const user = await User.create({
+//       userName,
+//       email,
+//       mobileNumber,
+//       password: hashedPassword,
+//     });
+
+//     const token = generateToken(user.id);
+
+//     res.status(201).json({
+//       success: true,
+//       token,
+//       user: {
+//         id: user.id,
+//         userName: user.userName,
+//         email: user.email,
+//       },
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
 exports.register = async (req, res) => {
   try {
-    const { userName, email, mobileNumber, password, confirmPassword } =
-      req.body;
+    const {
+      userName,
+      email,
+      mobileNumber,
+      companyName,
+      gstNumber,
+      panNumber,
+    } = req.body;
 
-    if (!userName || !email || !password || !confirmPassword) {
-      return res.status(400).json({ message: "All fields are required" });
+    // ================= VALIDATION =================
+
+    if (!userName || !email || !mobileNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "userName, email and mobileNumber are required",
+      });
     }
 
-    if (password !== confirmPassword) {
-      return res.status(400).json({ message: "Passwords do not match" });
-    }
+    // ================= CHECK EXISTING USER =================
 
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({
+      where: {
+        mobileNumber,
+      },
+    });
 
     if (existingUser) {
-      return res.status(409).json({ message: "User already exists" });
+      return res.status(409).json({
+        success: false,
+        message: "Mobile number already registered",
+      });
     }
 
-    const hashedPassword = await hashPassword(password);
+    const existingEmail = await User.findOne({
+      where: {
+        email,
+      },
+    });
+
+    if (existingEmail) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already registered",
+      });
+    }
+
+    // ================= CREATE USER =================
 
     const user = await User.create({
       userName,
       email,
       mobileNumber,
-      password: hashedPassword,
+      companyName: companyName || null,
+      gstNumber: gstNumber || null,
+      panNumber: panNumber || null,
     });
+
+    // ================= TOKEN =================
 
     const token = generateToken(user.id);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
+      message: "Registration successful",
       token,
+
       user: {
         id: user.id,
         userName: user.userName,
         email: user.email,
+        mobileNumber: user.mobileNumber,
+        companyName: user.companyName,
+        gstNumber: user.gstNumber,
+        panNumber: user.panNumber,
       },
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("REGISTER ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 

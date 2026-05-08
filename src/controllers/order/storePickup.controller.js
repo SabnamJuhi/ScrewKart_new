@@ -6,6 +6,7 @@ const {
   createAdminNotification,
 } = require("../../services/notificatonInApp.service");
 const updateProductSoldCount = require("../../utils/updateProductSoldCount");
+const { sendOrderNotification } = require("../../services/notificationInSMS.service");
 
 /**
  * Generate OTP (for reference)
@@ -182,6 +183,7 @@ exports.verifyCustomerPickup = async (req, res) => {
       storeId: order.storeId, // ✅ VERY IMPORTANT
       type: "completed",
     });
+    await sendOrderNotification(order, "ORDER_COMPLETED");
 
     return res.json({
       success: true,
